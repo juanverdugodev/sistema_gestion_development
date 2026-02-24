@@ -1,0 +1,14 @@
+# Ignorar todo el contenido del volumen para mysql, incluir readme
+vol-data/*
+!vol-data/README.md
+
+# Entorno virtual de Python
+sistema/env/
+
+# Caché de python
+__pycache__/
+.py[cod]
+
+# VSCode settings folder
+.vscode/
+
