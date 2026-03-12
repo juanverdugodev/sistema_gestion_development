@@ -1,0 +1,37 @@
+services:
+  db-sistema:
+    image: mysql:8.0.36
+    container_name: mysql_sistema_gestion
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: Ro0t@4dmin26
+      TZ: "America/Guayaquil"
+      MYSQL_DATABASE: sistema_gestion_db
+    ports:
+      - "3307:3306"
+    volumes:
+      - "./vol-data:/var/lib/mysql"
+      - "./db-sistema.sql:/docker-entrypoint-initdb.d/init.sql"
+
+  flask-app:
+    build:
+      context: .
+      dockerfile: sistema/Dockerfile
+    container_name: sistema_gestion_app
+    volumes:
+      - ./sistema:/app/sistema
+      - /app/sistema/env
+      - ./vol-app:/storage_datos
+    ports:
+      - "5000:5000" # PC (5000) -> Contenedor (5000)
+    environment:
+      - FLASK_DEBUG=1
+      - FLASK_ENV=development # Esto habilita el modo debug automáticamente
+      - DB_HOST=db-sistema
+      - DB_USER=app_user
+      - DB_PASSWORD=App@p4ssw0rd26
+      - DB_NAME=sistema_gestion_db
+      - DB_PORT=3306
+      - TZ=America/Guayaquil
+    depends_on:
+      - db-sistema

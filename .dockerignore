@@ -1,0 +1,23 @@
+# Ignorar volúmenes de datos locales
+vol-data/
+vol-app/
+
+# Ignorar archivos de Git
+.git/
+.gitignore
+
+# Ignorar scripts de base de datos y documentación
+db-sistema.sql
+README.md
+README-DB.md
+
+# Ignorar caché de Python y entornos virtuales
+__pycache__/
+*.pyc
+*.pyo
+**/venv/
+**/env/
+.env
+
+# IDEs
+.vscode/

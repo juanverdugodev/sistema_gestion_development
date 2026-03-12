@@ -1,0 +1,32 @@
+/* 1. Estilo global para el scroll de la página y cualquier contenedor */
+* {
+    scrollbar-width: thin; /* Para Firefox */
+    scrollbar-color: #3b82f698 transparent; /* Para Firefox */
+}
+
+/* 2. Configuración para navegadores Chrome, Safari y Edge */
+::-webkit-scrollbar {
+    width: 10px;  /* Scroll vertical */
+    height: 10px; /* Scroll horizontal (el que usa tu carrusel) */
+    display: block;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #3b82f698; /* Azul translúcido */
+    border-radius: 10px;
+    border: 2px solid #f1f5f9; /* Espacio alrededor para que luzca flotante */
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #2563eb; /* Azul más oscuro al pasar el mouse */
+}
+
+/* 3. Ajuste específico para el carrusel (opcional si quieres márgenes extra) */
+#carouselContainer::-webkit-scrollbar-track {
+    margin: 0 20px; 
+}

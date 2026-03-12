@@ -1,0 +1,501 @@
+{% extends "base/base.html" %}
+
+{% block content %}
+<div x-data="uploadHandler()" 
+     class="bg-white py-5 px-6 rounded-2xl shadow-lg border border-gray-300 flex flex-col gap-1 min-h-[calc(100vh-110px)] h-full relative overflow-hidden">
+    
+    <div class="flex flex-shrink-0 items-start md:items-center border-b border-gray-100 pb-2 gap-2">
+        <a href="{{ url_for('main.mark_day') }}" class="text-brand-blue hover:text-blue-700 transition-colors bg-blue-50 p-2 rounded-full hover:bg-blue-100 flex-shrink-0 mt-1 md:mt-0 shadow-sm">
+            <i class="fas fa-arrow-left text-xl"></i>
+        </a>
+        <div class="flex flex-col md:flex-row justify-start items-start md:items-center gap-2 md:gap-6 w-full">
+            <h2 class="text-2xl font-bold text-slate-800">Cargar hoja de registro</h2>
+            <div class="hidden md:block w-1 h-8 bg-brand-blue rounded-full"></div>
+            <div class="md:hidden w-full h-1 bg-brand-blue rounded-full my-1"></div>
+            <p class="text-gray-700 text-lg font-semibold">Sube tu documento para procesar tus marcaciones.</p>
+        </div>
+    </div>
+    
+    <div class="flex-1 flex flex-col lg:flex-row gap-2 items-stretch min-h-0">
+        
+        <div class="w-full lg:w-1/2 flex flex-col">
+            <div class="bg-blue-50 border-l-4 border-brand-blue rounded-xl p-2 shadow-md flex-1 flex flex-col overflow-y-auto">
+                <div class="flex items-center text-brand-blue mb-4 flex-shrink-0">
+                    <i class="fas fa-info-circle text-2xl mr-3"></i>
+                    <h3 class="text-xl font-bold">Instrucciones de subida</h3>
+                </div>
+                
+                <ul class="text-slate-700 space-y-2 font-medium flex-1">
+                    <li class="flex items-start">
+                        <i class="fas fa-file-pdf text-red-500 mt-1 mr-3 text-lg"></i>
+                        <span>Las <strong>burbujas</strong> del documento deben estar <strong> bien marcadas</strong>, el documento debe estar <strong>firmado</strong> en la sección que corresponde.</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-qrcode text-brand-blue mt-1 mr-3 text-lg"></i>
+                        <span>El <strong>código QR</strong> en la esquina superior derecha y los cuadros de horas, minutos y secciones de justificación <strong>no deben tener manchas ni rayones</strong>.</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fa-solid fa-expand text-cyan-500 mt-1 mr-3 text-lg"></i>
+                        <span>Se recomienda escanear el documento con <strong>AdobeScan</strong> en formato vertical <strong>A4</strong> con <strong>filtro de color automático</strong>.</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fa-solid fa-square-check text-green-500 mt-1 mr-3 text-lg"></i>
+                        <span>Verifica que el escaneo esté completo: los <strong>cuatro bordes</strong> de la hoja deben ser visibles y rectos <strong>sin bordes negros</strong> .</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-file-pdf text-red-500 mt-1 mr-3 text-lg"></i>
+                        <span>Asegúrate de que el documento esté guardado únicamente en formato <strong>.PDF</strong>.</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="w-full lg:w-1/2 flex flex-col">
+            <input type="file" id="fileInput" accept="application/pdf" class="hidden" @change="handleFileSelect">
+            <div @click="document.getElementById('fileInput').click()"
+                 class="flex-1 border-4 border-dashed border-brand-blue/40 bg-gray-50 hover:bg-blue-50 hover:border-brand-blue/70 rounded-3xl flex flex-col items-center justify-center cursor-pointer transition-colors duration-300 shadow-inner group p-6">
+                
+                <div class="w-24 h-24 bg-white rounded-full shadow-md flex items-center justify-center mb-6">
+                    <i class="fas fa-cloud-upload-alt text-5xl text-brand-blue group-hover:-translate-y-1 transition-transform duration-300"></i>
+                </div>
+                
+                <h3 class="text-2xl font-bold text-slate-800 mb-2 text-center">Haz clic para explorar</h3>
+                <p class="text-gray-600 font-semibold text-lg mb-6 text-center">o arrastra tu PDF en cualquier parte de la pantalla</p>
+                
+                <span class="bg-blue-100 text-brand-blue text-sm font-bold px-5 py-2 rounded-full border border-brand-blue/30 shadow-sm">
+                    Solo archivos .pdf
+                </span>
+            </div>
+        </div>
+    </div>
+    
+    <div x-show="showModal" style="display: none;" class="fixed inset-0 z-40 flex items-center justify-center">
+        
+        <div x-show="showModal" 
+             x-transition.opacity 
+             class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+             @click="cancelarGuardado()"></div>
+
+        <div x-show="showModal" 
+             x-transition:enter="transition ease-out duration-300 transform"
+             x-transition:enter-start="opacity-0 scale-90 translate-y-4"
+             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+             class="relative bg-white w-full max-w-4xl rounded-2xl shadow-2xl p-6 md:p-8 m-4 max-h-[75vh] flex flex-col">
+            
+            <div class="flex items-center justify-between border-b border-gray-200 pb-4 mb-4 flex-shrink-0">
+                <h3 class="text-2xl font-black text-slate-800 flex items-center">
+                    <i class="fas fa-clipboard-check text-green-500 mr-3"></i> Validar marcaciones
+                </h3>
+                <button @click="cancelarGuardado()" class="text-gray-400 hover:text-red-500 transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto pr-2" x-if="scannedData">
+                
+                <div class="bg-blue-50 border-l-4 border-brand-blue p-3 rounded-lg mb-6 flex flex-col gap-2">
+                    <div class="flex justify-between items-center border-b border-blue-100 pb-2">
+                        <span class="font-bold text-slate-700">Empleado detectado:</span>
+                        <span class="text-brand-blue font-black text-lg" 
+                            x-text="'EMP-' + String(scannedData?.id_usuario).padStart(5, '0')"></span>
+                    </div>
+                    <div class="flex justify-between items-center pt-1">
+                        <span class="font-bold text-slate-700">Fecha del documento:</span>
+                        <span class="text-brand-blue font-black text-lg" x-text="scannedData?.fecha_documento"></span>
+                    </div>
+                </div>
+                
+                <p class="text-gray-600 font-semibold mb-4">Revisa y corrige las horas o minutos en caso de ser necesario:</p>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <template x-for="seccion in obtenerSeccionesOrdenadas()" :key="seccion">
+                        <div class="border-2 rounded-xl p-4 flex justify-between items-center transition-colors relative group"
+                             :class="scannedData?.entradas_salidas[seccion] ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-gray-50 opacity-80'">
+                            
+                            <div class="flex flex-col">
+                                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider" x-text="ordenSecciones[seccion]"></span>
+                                
+                                <template x-if="scannedData?.entradas_salidas[seccion]">
+                                    <span class="text-xl font-black text-slate-800" x-text="scannedData.entradas_salidas[seccion]"></span>
+                                </template>
+                                <template x-if="!scannedData?.entradas_salidas[seccion]">
+                                    <span class="text-sm font-bold text-gray-400 italic">Sin marcar</span>
+                                </template>
+                            </div>
+
+                            <button @click="abrirEdicion(seccion, 'hora')" 
+                                    class="bg-white p-2 rounded-full text-brand-blue shadow hover:bg-brand-blue hover:text-white transition-colors border border-gray-200 flex-shrink-0 ml-2">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="mt-6 border-2 border-orange-200 bg-orange-50 rounded-xl p-4 flex justify-between items-center">
+                    <div class="flex flex-col">
+                        <span class="text-xs font-bold text-orange-600 uppercase tracking-wider">Motivo de justificación</span>
+                        <span class="text-lg font-black text-orange-800" 
+                              x-text="scannedData?.motivo_justificacion ? scannedData.motivo_justificacion : 'Ninguno'"></span>
+                    </div>
+                    <button @click="abrirEdicion('motivo_justificacion', 'motivo')" 
+                            class="bg-white p-2 rounded-full text-orange-500 shadow hover:bg-orange-500 hover:text-white transition-colors border border-orange-200">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
+                </div>
+
+                <div x-show="requiereJustificacionDetallada()" x-transition class="mt-6 border-2 border-red-200 bg-red-50 rounded-xl p-4">
+                    <label class="block text-sm font-bold text-red-700 uppercase tracking-wider mb-2">
+                        <i class="fas fa-exclamation-triangle mr-1"></i> Detalle de la justificación (Obligatorio)
+                    </label>
+                    <textarea x-model="justificacionTexto"
+                              maxlength="150"
+                              class="w-full rounded-lg border-red-300 shadow-sm focus:border-red-500 focus:ring-red-500 p-3" 
+                              rows="3" 
+                              placeholder="Escribe aquí los detalles del motivo (máx. 150 caracteres)..."></textarea>
+                    <div class="text-right mt-1">
+                        <span class="text-xs font-bold transition-colors" 
+                              :class="justificacionTexto.length >= 100 ? 'text-red-600' : 'text-gray-500'" 
+                              x-text="justificacionTexto.length + ' / 100'"></span>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="border-t border-gray-200 pt-4 mt-4 flex gap-4 flex-shrink-0">
+                <button @click="cancelarGuardado()" class="flex-1 py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">
+                    Descartar documento
+                </button>
+                <button @click="confirmarGuardado()" 
+                        :class="{'opacity-50 cursor-not-allowed': requiereJustificacionDetallada() && justificacionTexto.trim() === ''}"
+                        class="flex-1 py-3 px-4 bg-brand-blue hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-colors flex justify-center items-center gap-2">
+                    <i class="fas fa-save"></i> Confirmar y Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="showEditModal" style="display: none;" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+        <div @click.away="showEditModal = false" class="bg-white rounded-2xl shadow-2xl p-6 w-96 max-w-[90%] transform transition-all">
+            <h4 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2" x-text="tituloEdicion"></h4>
+            
+            <div x-show="tipoEdicion === 'hora'" class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Ingresa la hora correcta:</label>
+                <input type="time" x-model="valorEdicion" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-lg p-3 text-center">
+                <button @click="valorEdicion = null" class="mt-2 text-sm text-red-500 hover:text-red-700 font-semibold w-full text-right">
+                    <i class="fas fa-trash"></i> Eliminar marca
+                </button>
+            </div>
+
+            <div x-show="tipoEdicion === 'motivo'" class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Selecciona el motivo:</label>
+                <select x-model="valorEdicion" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue p-3">
+                    <option value="">Ninguno</option>
+                    <template x-for="motivo in listaMotivos">
+                        <option :value="motivo" x-text="motivo"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="flex gap-3">
+                <button @click="showEditModal = false" class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-colors">Cancelar</button>
+                <button @click="guardarEdicion()" class="flex-1 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg transition-colors">Actualizar</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block modals %}
+    {% include 'components/drag_overlay.html' %}
+    {% include 'components/loading_overlay.html' %}
+{% endblock %}
+
+{% block scripts %}
+
+<script>
+    let dragCounter = 0;
+    
+    window.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dragCounter++;
+        window.dispatchEvent(new CustomEvent('global-drag-enter'));
+    });
+
+    window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter === 0) {
+            window.dispatchEvent(new CustomEvent('global-drag-leave'));
+        }
+    });
+
+    window.addEventListener('dragover', (e) => e.preventDefault());
+
+    window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        window.dispatchEvent(new CustomEvent('global-drag-leave'));
+        
+        if (e.dataTransfer.files.length > 0) {
+            window.dispatchEvent(new CustomEvent('process-files', { detail: e.dataTransfer.files }));
+        }
+    });
+
+    function uploadHandler() {
+        return {
+            showModal: false,       
+            scannedData: null,      
+            tempFile: null,         
+            
+            // VARIABLES PARA LÓGICA DE INTERFAZ
+            ordenSecciones: {   
+                'entrada_principal': 'Entrada principal', 
+                'salida_intermedia': 'Salida intermedia (Descanso)', 
+                'entrada_intermedia': 'Entrada intermedia (Retorno)', 
+                'salida_principal': 'Salida principal', 
+                'entrada_justificada': 'Entrada justificada', 
+                'salida_justificada': 'Salida justificada'
+            },
+            justificacionTexto: '',
+            
+            // VARIABLES PARA SUB-MODAL DE EDICIÓN
+            showEditModal: false,
+            tipoEdicion: '', // 'hora' o 'motivo'
+            campoActual: '',
+            tituloEdicion: '',
+            valorEdicion: '',
+            listaMotivos: ['MEDICO', 'PERSONAL', 'COMISION', 'OTRO'],
+
+            init() {
+                window.addEventListener('process-files', (e) => {
+                    this.processFiles(e.detail);
+                });
+            },
+            
+            // Función de orden cronológico
+            obtenerSeccionesOrdenadas() {
+                if (!this.scannedData || !this.scannedData.entradas_salidas) return [];
+
+                const data = this.scannedData.entradas_salidas;
+                const keys = Object.keys(data);
+
+                // Orden de respaldo lógico por si las horas están vacías
+                const ordenBase = {
+                    'entrada_principal': 1,
+                    'entrada_justificada': 2,
+                    'salida_intermedia': 3,
+                    'entrada_intermedia': 4,
+                    'salida_justificada': 5,
+                    'salida_principal': 6
+                };
+
+                return keys.sort((a, b) => {
+                    const timeA = data[a];
+                    const timeB = data[b];
+
+                    // Si AMBAS tienen hora, las ordenamos (08:00 va antes que 13:00)
+                    if (timeA && timeB) {
+                        if (timeA < timeB) return -1;
+                        if (timeA > timeB) return 1;
+                    }
+
+                    // Si UNA tiene hora y la otra está vacía (null), la que tiene hora sube
+                    if (timeA && !timeB) return -1;
+                    if (!timeA && timeB) return 1;
+
+                    // Si AMBAS están vacías, usamos el orden lógico base
+                    return ordenBase[a] - ordenBase[b];
+                });
+            },
+
+            handleFileSelect(event) {
+                const files = event.target.files;
+                this.processFiles(files);
+            },
+
+            processFiles(files) {
+                if (files.length === 0) return;
+                const file = files[0];
+                
+                if (file.type !== "application/pdf") {
+                    window.dispatchEvent(new CustomEvent('notify', {
+                        detail: { message: "Error: El archivo debe ser obligatoriamente un documento PDF.", type: "error" }
+                    }));
+                    return;
+                }
+
+                window.dispatchEvent(new CustomEvent('show-loading', {
+                    detail: { message: "Analizando marcas y firma..." }
+                }));
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                fetch("{{ url_for('main.process_upload_omr') }}", {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json().then(data => ({ status: response.status, body: data })))
+                .then(res => {
+                    if (res.status === 200) {
+                        window.dispatchEvent(new CustomEvent('show-loading', {
+                            detail: { message: "¡Análisis completado!" }
+                        }));
+                        
+                        setTimeout(() => {
+                            window.dispatchEvent(new CustomEvent('hide-loading'));
+                            this.scannedData = res.body.datos;
+                            this.tempFile = res.body.archivo_temp;
+                            this.justificacionTexto = ''; // Resetear texto
+                            this.showModal = true; 
+                        }, 800);
+                    } else {
+                        window.dispatchEvent(new CustomEvent('hide-loading'));
+                        window.dispatchEvent(new CustomEvent('notify', {
+                            detail: { message: res.body.error || "Ocurrió un error en el servidor.", type: "error" }
+                        }));
+                    }
+                })
+                .catch(error => {
+                    console.error("Error:", error);
+                    window.dispatchEvent(new CustomEvent('hide-loading'));
+                    window.dispatchEvent(new CustomEvent('notify', {
+                        detail: { message: "Error crítico de conexión con el servidor.", type: "error" }
+                    }));
+                })
+                .finally(() => {
+                    document.getElementById('fileInput').value = '';
+                });
+            },
+
+            // --- LÓGICA DE EDICIÓN FLOTANTE ---
+
+            abrirEdicion(campo, tipo) {
+                this.campoActual = campo;
+                this.tipoEdicion = tipo;
+                
+                if (tipo === 'hora') {
+                    this.tituloEdicion = "Editar " + this.ordenSecciones[campo].toUpperCase();
+                    this.valorEdicion = this.scannedData.entradas_salidas[campo] || '';
+                } else if (tipo === 'motivo') {
+                    this.tituloEdicion = "Editar MOTIVO DE JUSTIFICACIÓN";
+                    this.valorEdicion = this.scannedData.motivo_justificacion || '';
+                }
+                
+                this.showEditModal = true;
+            },
+
+            guardarEdicion() {
+                if (this.tipoEdicion === 'hora') {
+                    this.scannedData.entradas_salidas[this.campoActual] = this.valorEdicion ? this.valorEdicion : null;
+                } else if (this.tipoEdicion === 'motivo') {
+                    this.scannedData.motivo_justificacion = this.valorEdicion ? this.valorEdicion : null;
+                }
+                this.showEditModal = false;
+            },
+
+            requiereJustificacionDetallada() {
+                if (!this.scannedData) return false;
+                
+                const tieneMotivo = this.scannedData.motivo_justificacion !== null;
+                const tieneEntradaJust = this.scannedData.entradas_salidas['entrada_justificada'] !== null;
+                const tieneSalidaJust = this.scannedData.entradas_salidas['salida_justificada'] !== null;
+                
+                // Comprobar si es una fecha pasada para el documento
+                // Obtenemos la fecha de hoy en formato YYYY-MM-DD ajustada a la zona horaria local
+                const hoy = new Date();
+                // Ajuste simple para obtener YYYY-MM-DD local
+                const hoyString = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+
+                const esFechaPasada = this.scannedData.fecha_documento < hoyString;
+
+                return tieneMotivo || tieneEntradaJust || tieneSalidaJust || esFechaPasada;
+            },
+
+            // --- CONFIRMACIÓN Y CANCELACIÓN ---
+
+            confirmarGuardado() {
+                // Validación estricta del texto de justificación
+                if (this.requiereJustificacionDetallada() && this.justificacionTexto.trim() === '') {
+                    window.dispatchEvent(new CustomEvent('notify', {
+                        detail: { message: "Esta hoja requiere obligatoriamente el detalle de justificación.", type: "warning" }
+                    }));
+                    return;
+                }
+
+                // Inyectamos el texto de justificación al JSON final
+                this.scannedData.detalle_justificacion = this.justificacionTexto.trim() !== '' ? this.justificacionTexto.trim() : null;
+
+                window.dispatchEvent(new CustomEvent('show-loading', {
+                    detail: { message: "Guardando registros..." }
+                }));
+
+                // Fetch al nuevo endpoint de confirmación
+
+                fetch("{{ url_for('main.confirm_upload_omr') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        archivo_temp: this.tempFile,
+                        datos: this.scannedData
+                    })
+                })
+                .then(response => response.json().then(data => ({ status: response.status, body: data })))
+                .then(res => {
+                    window.dispatchEvent(new CustomEvent('hide-loading'));
+                    if (res.status === 200) {
+                        window.dispatchEvent(new CustomEvent('notify', {
+                            detail: { message: "¡Registros guardados con éxito!", type: "success" }
+                        }));
+                        this.showModal = false;
+                        this.scannedData = null;
+                        this.tempFile = null;
+                        this.justificacionTexto = '';
+                    } else {
+                        window.dispatchEvent(new CustomEvent('notify', {
+                            detail: { message: res.body.error || "Error al guardar.", type: "error" }
+                        }));
+                    }
+                })
+                .catch(error => {
+                    console.error("Error al confirmar:", error);
+                    window.dispatchEvent(new CustomEvent('hide-loading'));
+                    window.dispatchEvent(new CustomEvent('notify', {
+                        detail: { message: "Error crítico de conexión al confirmar guardado.", type: "error" }
+                    }));
+                });
+            },
+
+            cancelarGuardado() {
+                this.showModal = false;
+                
+                if (this.tempFile) {
+                    fetch("{{ url_for('main.cancel_upload_omr') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ filename: this.tempFile })
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            console.log("Archivo temporal descartado con éxito.");
+                        }
+                    })
+                    .catch(error => console.error("Error al descartar el archivo:", error));
+                }
+
+                this.scannedData = null;
+                this.tempFile = null;
+                this.justificacionTexto = '';
+
+                window.dispatchEvent(new CustomEvent('notify', {
+                    detail: { message: "Operación cancelada. El archivo fue descartado.", type: "warning" }
+                }));
+            }
+        }
+    }
+</script>
+
+{% endblock %}

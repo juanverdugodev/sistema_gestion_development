@@ -3,7 +3,7 @@
 Para levantar el contenedor desde la raíz del proyecto (`sistema_gestion/`), asegurarse de tener abierto **Docker desktop para Windows** y ejecutar el siguiente comando en la terminal (CMD):
 
 ```cmd
-docker run -d --name mysql_sistema_gestion --restart unless-stopped -p 3307:3306 -e MYSQL_ROOT_PASSWORD=Ro0t@4dmin26 -e MYSQL_DATABASE=sistema_gestion_db -e MYSQL_USER=app_user -e MYSQL_PASSWORD=AppP4ssw0rd26 -v "%cd%\vol-data:/var/lib/mysql" mysql:8.0.36
+docker run -d --name mysql_sistema_gestion --restart unless-stopped -p 3307:3306 -e MYSQL_ROOT_PASSWORD=Ro0t@4dmin26 -e TZ="America/Guayaquil" -v "%cd%\vol-data:/var/lib/mysql" -v "%cd%\db-sistema.sql:/docker-entrypoint-initdb.d/init.sql" mysql:8.0.36
 ```
 
 > [!IMPORTANT]

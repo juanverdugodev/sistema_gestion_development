@@ -1,0 +1,120 @@
+{% extends "base/base.html" %}
+
+{% block content %}
+<div class="bg-white py-5 px-6 rounded-2xl shadow-lg border border-gray-300 flex flex-col gap-4 min-h-[calc(100vh-110px)] h-full overflow-hidden relative">
+    
+    <div class="flex flex-shrink-0 items-start md:items-center border-b border-gray-100 pb-4 gap-4">
+        <a href="{{ url_for('main.home') }}" class="text-brand-blue hover:text-blue-700 transition-colors bg-blue-50 p-3 rounded-full hover:bg-blue-100 flex-shrink-0 mt-1 md:mt-0 shadow-sm">
+            <i class="fas fa-arrow-left text-xl"></i>
+        </a>
+        <div class="flex flex-col md:flex-row justify-start items-start md:items-center gap-3 md:gap-6 w-full">
+            <h2 class="text-2xl font-bold text-slate-800">Mi Cuenta</h2>
+            <div class="hidden md:block w-1 h-8 bg-brand-blue rounded-full"></div>
+            <div class="md:hidden w-full h-1 bg-brand-blue rounded-full my-1"></div>
+            <p class="text-gray-700 text-lg font-semibold">Administra tu información personal y credenciales.</p>
+        </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar" 
+         x-data="profileForm('{{ user.nombres }}', '{{ user.apellidos }}', '{{ user.cedula if user.cedula else '' }}')">
+         
+        <form action="{{ url_for('main.update_profile') }}" method="POST" class="max-w-4xl mx-auto flex flex-col gap-6 pt-2 pb-6">
+            
+            <div class="bg-blue-50 border-l-4 border-brand-blue p-4 rounded-xl shadow-sm mb-2">
+                <p class="text-slate-700 font-medium">
+                    <i class="fas fa-info-circle text-brand-blue mr-2"></i>
+                    Aquí puedes actualizar tus datos personales. El departamento y rol en el sistema son asignados por el administrador.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="flex flex-col gap-2 md:col-span-2 lg:col-span-1">
+                    <label for="nombres" class="text-sm font-bold text-slate-700 uppercase tracking-wide">Nombres</label>
+                    <input type="text" id="nombres" name="nombres" x-model="nombres" required
+                           class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all shadow-sm font-semibold text-slate-800">
+                </div>
+                
+                <div class="flex flex-col gap-2 md:col-span-2 lg:col-span-1">
+                    <label for="apellidos" class="text-sm font-bold text-slate-700 uppercase tracking-wide">Apellidos</label>
+                    <input type="text" id="apellidos" name="apellidos" x-model="apellidos" required
+                           class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all shadow-sm font-semibold text-slate-800">
+                </div>
+                
+                <div class="flex flex-col gap-2 md:col-span-1 relative">
+                    <label for="cedula" class="text-sm font-bold text-slate-700 uppercase tracking-wide">Número de Cédula</label>
+                    <input type="text" id="cedula" name="cedula" x-model="cedula" @input="validarCedula" required
+                           class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all shadow-sm font-semibold text-slate-800">
+                    
+                    <span class="absolute right-4 top-10 text-xs font-bold transition-colors"
+                          :class="cedula.length === 10 ? 'text-green-500' : 'text-gray-400'">
+                        <span x-text="cedula.length"></span>/10
+                    </span>
+                </div>
+            </div>
+
+            <hr class="border-gray-200 my-4">
+
+            <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-lock text-gray-400 mr-2"></i> Información Laboral</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="flex flex-col gap-2">
+                    <label class="text-sm font-bold text-gray-500 uppercase tracking-wide">Departamento</label>
+                    <div class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-100 text-gray-500 shadow-inner font-semibold cursor-not-allowed flex items-center">
+                        <i class="fas fa-building mr-3 opacity-60"></i> {{ user.departamento }}
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label class="text-sm font-bold text-gray-500 uppercase tracking-wide">Rol en el sistema</label>
+                    <div class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-100 text-gray-500 shadow-inner font-semibold cursor-not-allowed flex items-center">
+                        <i class="fas fa-user-shield mr-3 opacity-60"></i> {{ user.rol_privilegio }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-between items-center bg-gray-50 p-5 rounded-2xl border border-gray-100">
+                
+                <a href="{{ url_for('main.change_password') }}" class="w-full sm:w-auto px-6 py-3 bg-white border-2 border-orange-200 text-orange-600 hover:bg-orange-50 hover:border-orange-400 font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 group">
+                    <i class="fas fa-key group-hover:rotate-12 transition-transform"></i> Cambiar Contraseña
+                </a>
+                
+                <button type="submit" 
+                        :disabled="!esValido"
+                        :class="esValido ? 'bg-brand-blue hover:bg-blue-700 text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
+                        class="w-full sm:w-auto px-8 py-3 font-bold rounded-xl transition-all transform flex items-center justify-center gap-2">
+                    <i class="fas fa-save"></i> Guardar Cambios
+                </button>
+            </div>
+            
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function profileForm(nombresInicial, apellidosInicial, cedulaInicial) {
+        return {
+            nombres: nombresInicial,
+            apellidos: apellidosInicial,
+            cedula: cedulaInicial,
+
+            // Verifica que el campo solo tenga números y máximo 10
+            validarCedula() {
+                // Reemplaza todo lo que no sea número por un string vacío
+                this.cedula = this.cedula.replace(/[^0-9]/g, '');
+                
+                // Corta el string si se pasa de 10
+                if (this.cedula.length > 10) {
+                    this.cedula = this.cedula.slice(0, 10);
+                }
+            },
+
+            // Computa si el formulario está listo para enviarse
+            get esValido() {
+                return this.nombres.trim().length > 0 && 
+                       this.apellidos.trim().length > 0 && 
+                       this.cedula.length === 10;
+            }
+        }
+    }
+</script>
+{% endblock %}

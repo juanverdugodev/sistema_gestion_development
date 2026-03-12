@@ -1,14 +1,19 @@
-# Ignorar todo el contenido del volumen para mysql, incluir readme
+# --- Bases de Datos y Volúmenes ---
+# Ignorar el contenido de MySQL pero mantener la carpeta
 vol-data/*
-!vol-data/README.md
+!vol-data/.gitkeep
 
-# Entorno virtual de Python
-sistema/env/
+# Ignorar archivos generados por la App pero mantener la carpeta
+vol-app/*
+!vol-app/.gitkeep
 
-# Caché de python
+# --- Python & Entornos ---
 __pycache__/
-.py[cod]
+*.py[cod]
+*$py.class
+sistema/env/
+venv/
+.env
 
-# VSCode settings folder
+# --- Herramientas y Otros ---
 .vscode/
-

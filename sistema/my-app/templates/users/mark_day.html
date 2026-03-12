@@ -1,0 +1,175 @@
+{% extends "base/base.html" %}
+
+{% block content %}
+<div class="bg-white py-4 px-6 rounded-2xl shadow-lg border border-gray-300 flex flex-col gap-4 h-[calc(100vh-120px)] overflow-hidden w-full">
+    
+    {% if session.rol == 'Administrador' %}
+    <div class="section-acciones flex-shrink-0"> 
+        <div class="mb-3">
+            <h3 class="text-lg font-bold text-slate-800">Bienvenido a tu panel de administración. Aquí puedes gestionar las hojas de registro.</h3>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <a href="{{ url_for('main.preview_omr') }}" class="group py-4 px-6 bg-blue-100 border-l-4 border-brand-blue rounded-xl shadow-xl hover:shadow-md hover:bg-blue-200 transition-all flex items-center justify-between">
+                <div class="flex flex-col">
+                    <h3 class="text-lg font-bold text-brand-blue text-base">
+                        Descargar hoja de registro
+                    </h3>
+                    <p class="text-brand-blue text-md font-semibold mt-0.5">Obtén el formato de registro en PDF</p>
+                </div>
+                <i class="fas fa-file-download text-4xl text-brand-blue opacity-80 pl-4 mr-14 border-l-2 border-brand-blue/20"></i> 
+            </a>
+
+            <a href="{{ url_for('main.upload_omr_view') }}" class="group py-4 px-6 bg-green-100 border-l-4 border-green-500 rounded-xl shadow-xl hover:shadow-md hover:bg-green-200 transition-all flex items-center justify-between">
+                <div class="flex flex-col">
+                    <h3 class="text-lg font-bold text-green-700 text-base">
+                        Cargar hoja de registro
+                    </h3>
+                    <p class="text-green-600 text-md font-semibold mt-0.5">Sube tus archivos completados al sistema</p>
+                </div>
+                <i class="fas fa-file-upload text-4xl text-green-600 opacity-80 pl-6 mr-14 border-l-2 border-green-500/20"></i> 
+            </a>
+        </div>
+    </div>
+
+    <hr class="border-gray-100">
+    {% endif %}
+    <div class="section-actividad flex-1 flex flex-col min-h-0 overflow-hidden pb-2"> 
+        
+        <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-4 w-full">
+            
+            <div class="flex items-center gap-4">
+                <h3 class="text-xl font-bold text-slate-800 flex items-center">
+                    <i class="fas fa-calendar-day mr-3 text-brand-blue text-2xl"></i>
+                    Actividad del día
+                </h3>
+                <div class="hidden md:block w-1 h-8 bg-brand-blue rounded-full"></div>
+                <span class="text-brand-blue px-4 py-1.5 rounded-full text-md font-black border-2 border-brand-blue/20 bg-blue-50 tracking-wide whitespace-nowrap">
+                    {{ fecha_actual }}
+                </span>
+            </div>
+
+            <form method="GET" action="{{ url_for('main.mark_day') }}" class="flex items-center gap-2 w-full xl:w-auto">
+                <input type="date" name="fecha" value="{{ fecha_seleccionada }}" max="{{ hoy_str }}" required
+                       class="flex-1 xl:flex-none border-2 border-brand-blue/30 rounded-lg px-3 py-1.5 text-slate-700 font-semibold focus:outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue transition-all bg-gray-50">
+                <button type="submit" class="bg-brand-blue hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold transition-colors shadow-md flex items-center justify-center gap-2 flex-shrink-0">
+                    <i class="fas fa-search"></i> <span class="hidden sm:inline">Consultar</span>
+                </button>
+            </form>
+            
+        </div>
+
+        <div class="flex-1 flex flex-col lg:flex-row gap-4 p-4 bg-gray-100 rounded-xl border-[3px] border-dashed border-brand-blue/70 shadow-xl relative items-center justify-center min-h-0">
+            
+            {% if registros_hoy %}
+                <div class="flex-1 flex flex-col lg:flex-row gap-5 w-full items-center min-h-0 h-full">
+                    
+                    <div class="relative flex-1 flex items-center group min-w-0 h-full">
+                        <button id="prevBtn" class="absolute -left-4 z-20 bg-brand-blue text-white w-10 h-10 rounded-full shadow-xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 disabled:invisible">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        
+                        <div id="carouselContainer" class="flex-1 grid grid-flow-col auto-cols-[calc(100%-1.5rem)] sm:auto-cols-[calc(50%-2rem)] lg:auto-cols-[calc(33.333%-2rem)] xl:auto-cols-[calc(25%-2rem)] gap-5 overflow-x-auto scroll-smooth pb-2 h-full items-center">
+                            
+                            {% for marcacion in registros_hoy %}
+                            
+                            {% set b_color = 'border-gray-100' %}
+                            {% set bg_color = 'bg-white' %}
+                            {% set txt_color = 'text-slate-800' %}
+                            {% set lbl_color = 'text-brand-blue' %}
+                            
+                            {% if marcacion.estado == 'Anormal' %}
+                                {% set b_color = 'border-red-200' %}
+                                {% set bg_color = 'bg-red-50' %}
+                                {% set txt_color = 'text-red-700' %}
+                                {% set lbl_color = 'text-red-500' %}
+                            {% elif marcacion.estado == 'Pendiente' %}
+                                {% set b_color = 'border-orange-300' %}
+                                {% set bg_color = 'bg-orange-50' %}
+                                {% set txt_color = 'text-orange-800' %}
+                                {% set lbl_color = 'text-orange-600' %}
+                            {% elif marcacion.estado == 'Justificada' %}
+                                {% set b_color = 'border-green-300' %}
+                                {% set bg_color = 'bg-green-50' %}
+                                {% set txt_color = 'text-green-800' %}
+                                {% set lbl_color = 'text-green-600' %}
+                            {% endif %}
+
+                            <div class="flex flex-col items-center justify-center px-4 py-4 rounded-xl border-2 shadow-xl h-full {{ bg_color }} {{ b_color }} min-h-[160px]">
+                                <span class="text-xs font-black uppercase tracking-[0.2em] {{ lbl_color }} mb-4 text-center line-clamp-2">
+                                    {{ marcacion.tipo }}
+                                </span>
+                                <div class="text-3xl font-black {{ txt_color }}">
+                                    {{ marcacion.hora }}
+                                </div>
+                                <div class="mt-2 text-[0.65rem] font-bold uppercase {{ lbl_color }} opacity-80">
+                                    {{ marcacion.estado }}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <button id="nextBtn" class="absolute -right-4 z-20 bg-brand-blue text-white w-10 h-10 rounded-full shadow-xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 disabled:invisible">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+
+                    <div class="w-full lg:w-72 p-5 rounded-xl border-2 shadow-xl overflow-y-auto {% if tiene_novedades %} border-orange-200 bg-orange-50 {% else %} border-gray-300 bg-white {% endif %} flex-shrink-0 flex flex-col h-full justify-start custom-scrollbar">
+                        <h4 class="text-md font-bold {% if tiene_novedades %} text-orange-700 {% else %} text-gray-800 {% endif %} uppercase mb-3 flex items-center">
+                            <i class="fas fa-info-circle mr-3 text-brand-blue"></i> Estado de jornada
+                        </h4>
+                        <ul class="space-y-3">
+                            {% if observaciones %}
+                                {% for obs in observaciones %}
+                                <li class="text-sm font-bold text-slate-700 flex items-start">
+                                    <span class="text-orange-500 mr-2 mt-0.5">•</span> {{ obs }}
+                                </li>
+                                {% endfor %}
+                            {% else %}
+                                <li class="text-md font-bold text-blue-700 flex items-center mt-4">
+                                    <i class="fas fa-check-circle mr-3 text-green-500 text-xl"></i>Completada y Válida
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+            {% else %}
+                <div class="m-auto flex flex-col items-center justify-center py-4 w-full">
+                    <div class="bg-blue-200 p-3 rounded-full mb-4 text-brand-blue">
+                        <i class="fas fa-calendar-times text-3xl"></i>
+                    </div>
+                    <p class="text-gray-900 font-bold text-xl text-center">Sin registros el día seleccionado</p>
+                    <p class="text-gray-800 font-semibold text-md text-center px-4 mt-1">No se encontraron marcaciones para esta fecha.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    const container = document.getElementById('carouselContainer');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    if (container) {
+        const updateButtons = () => {
+            const scrollLeft = container.scrollLeft;
+            const maxScroll = container.scrollWidth - container.clientWidth;
+            prevBtn.disabled = scrollLeft <= 5;
+            nextBtn.disabled = scrollLeft >= maxScroll - 5;
+        };
+
+        nextBtn.addEventListener('click', () => {
+            container.scrollLeft += container.clientWidth / 2;
+        });
+
+        prevBtn.addEventListener('click', () => {
+            container.scrollLeft -= container.clientWidth / 2;
+        });
+
+        container.addEventListener('scroll', updateButtons);
+        window.addEventListener('resize', updateButtons);
+        setTimeout(updateButtons, 300);
+    }
+</script>
+{% endblock %}

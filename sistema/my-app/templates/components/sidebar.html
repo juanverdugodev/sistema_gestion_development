@@ -1,0 +1,45 @@
+<aside class="w-64 bg-slate-900 text-slate-300 flex flex-col border-r border-slate-700 shadow-xl p-3 gap-y-4 {% if show_global_anim %} animate-slide-left {% endif %}">
+    
+    <div class="p-5 text-xl font-bold text-white bg-slate-800 border border-slate-700 rounded-2xl flex items-center justify-center shadow-sm">
+        <i class="fas fa-clock mr-3 text-brand-blue"></i> Gestión horaria
+    </div>
+    
+    <nav class="flex-1 px-2 py-4 space-y-2 bg-slate-800 border border-slate-700 rounded-2xl shadow-sm">
+        {% if request.endpoint != 'main.home' %}
+        <a href="{{ url_for('main.home') }}" 
+           class="flex items-center py-3 px-4 rounded-lg hover:bg-slate-700 hover:text-white transition-all duration-200">
+            <i class="fa-solid fa-house w-6 text-brand-blue"></i> Inicio
+        </a>
+        {% endif %}
+        {% if request.endpoint != 'main.mark_day' %}
+        <a href="{{ url_for('main.mark_day') }}"
+           class="flex items-center py-3 px-4 rounded-lg hover:bg-slate-700 hover:text-white transition-all duration-200">
+            <i class="fa-solid fa-calendar-check w-6 text-brand-blue"></i>
+            {% if session.rol == 'Administrador' %}
+                Marcar jornada
+            {% else %}
+                Jornada
+            {% endif %}
+        </a>
+        {% endif %}
+
+        {% if request.endpoint != 'main.view_calendar' %}
+        <a href="{{ url_for('main.view_calendar') }}"
+            class="flex items-center py-3 px-4 rounded-lg hover:bg-slate-700 hover:text-white transition-all duration-200">
+            <i class="fa-solid fa-calendar-days w-6 text-brand-blue"></i> Calendario
+        </a>
+        {% endif %}
+
+        {% if session.rol == 'Administrador' %}
+            {% if request.endpoint != 'main.admin_user_records' %}
+            <a href="{{ url_for('main.admin_user_records') }}"
+            class="flex items-center py-3 px-4 rounded-lg hover:bg-slate-700 hover:text-white transition-all duration-200">
+                <i class="fa-solid fa-users-viewfinder w-6 text-brand-blue"></i> Consulta de Usuarios
+            </a>
+            {% endif %}
+        {% endif %}
+
+    </nav>
+
+
+</aside>
