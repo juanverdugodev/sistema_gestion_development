@@ -1,0 +1,467 @@
+{% extends "base/base.html" %}
+
+{% block content %}
+<div x-data='editorMarcaciones({{ datos_js | tojson | safe }}, {{ (usuario | tojson | safe) if usuario else "null" }})'
+     @abrir-modal.window="abrirModalEdicion($event.detail.fecha, $event.detail.dia)"
+     class="bg-white py-5 px-6 rounded-2xl shadow-lg border border-gray-300 flex flex-col gap-5 min-h-[calc(100vh-120px)] w-full relative">
+    
+    <div class="flex flex-col md:flex-row justify-start items-start md:items-center gap-3 md:gap-6 w-full border-b border-gray-100 pb-4">
+        <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-brand-blue shadow-sm flex-shrink-0">
+            <i class="fas fa-users-cog text-2xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-slate-800">Consulta de registros por usuario</h2>
+        <div class="hidden md:block w-1 h-8 bg-brand-blue rounded-full"></div>
+        <div class="md:hidden w-full h-1 bg-brand-blue rounded-full my-1"></div>
+        <p class="text-gray-700 text-lg font-semibold">Busqueda por nombre para ver el historial mensual.</p>
+    </div>
+
+    <div class="flex flex-col xl:flex-row justify-between items-start gap-4 w-full">
+        <form method="GET" action="{{ url_for('main.admin_user_records') }}" 
+              x-data="formBuscador('{{ mes_seleccionado }}', '{{ busqueda }}', '{{ url_for('main.get_names_by_month_api') }}')"
+              class="flex flex-col sm:flex-row gap-3 w-full xl:w-auto bg-gray-50 p-3 rounded-xl border border-gray-200 shadow-inner flex-shrink-0">
+            
+            <div class="flex gap-2 w-full sm:w-64">
+                <div class="relative w-1/2">
+                    <select x-model="mesTemp" @change="actualizarMesAnio()" required
+                            class="w-full pl-3 pr-8 py-2 border-2 border-gray-300 rounded-lg text-slate-700 font-semibold focus:outline-none focus:border-brand-blue transition-colors appearance-none cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                            {% if not meses_disponibles %} disabled {% endif %}>
+                        
+                        {% if not meses_disponibles %}
+                            <option value="" disabled selected>Sin registros</option>
+                        
+                        {% else %}
+                            <option value="" disabled selected>Mes</option>
+                            {% for mes in meses_disponibles %}
+                                <option value="{{ mes.num }}">{{ mes.nombre }}</option>
+                            {% endfor %}
+                        {% endif %}
+                        
+                    </select>
+                    <div class="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
+                        <i class="fas fa-chevron-down text-gray-400 text-xs"></i>
+                    </div>
+                </div>
+
+                <div class="relative w-1/2">
+                    <select x-model="anioTemp" @change="actualizarMesAnio()" required
+                            class="w-full pl-3 pr-8 py-2 border-2 border-gray-300 rounded-lg text-slate-700 font-semibold focus:outline-none focus:border-brand-blue transition-colors appearance-none cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                            {% if not anios_disponibles %} disabled {% endif %}>
+                        
+                        {% if not anios_disponibles %}
+                            <option value="" disabled selected>Sin registros</option>
+                        
+                        {% else %}
+                            <option value="" disabled selected>Año</option>
+                            {% for anio in anios_disponibles %}
+                                <option value="{{ anio }}">{{ anio }}</option>
+                            {% endfor %}
+                        {% endif %}
+                        
+                    </select>
+                    <div class="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
+                        <i class="fas fa-chevron-down text-gray-400 text-xs"></i>
+                    </div>
+                </div>
+
+                <input type="hidden" name="mes" :value="mesCompleto">
+            </div>
+
+            <div class="relative w-full sm:w-72 flex-shrink-0" x-data="{ comboAbierto: false }">
+                
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
+                    <i class="fas fa-user-tag text-gray-400" :class="nombres.length > 0 ? 'text-brand-blue' : ''"></i>
+                </div>
+                
+                <input type="hidden" name="busqueda" :value="nombreSeleccionado">
+                
+                <button type="button" 
+                        @click="if(nombres.length > 0 && !loadingNames) comboAbierto = !comboAbierto"
+                        @click.away="comboAbierto = false"
+                        :disabled="nombres.length === 0 || loadingNames"
+                        class="w-full text-left pl-10 pr-10 py-2 border-2 border-gray-300 rounded-lg text-slate-700 font-semibold focus:outline-none focus:border-brand-blue transition-colors cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed bg-white h-[44px] truncate relative">
+                    
+                    <span x-text="loadingNames ? 'Buscando registros...' : 
+                                 (nombres.length === 0 ? 'Selecciona mes y año' : 
+                                 (nombreSeleccionado ? nombreSeleccionado : 'Selecciona un funcionario'))">
+                    </span>
+                </button>
+                
+                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none z-10">
+                    <i class="fas fa-chevron-down text-gray-400 transition-transform duration-200" 
+                       x-show="!loadingNames" 
+                       :class="comboAbierto ? 'rotate-180' : ''"></i>
+                    <i class="fas fa-circle-notch fa-spin text-brand-blue" x-show="loadingNames" style="display: none;"></i>
+                </div>
+
+                <ul x-show="comboAbierto" 
+                    x-transition.opacity.duration.200ms
+                    style="display: none;"
+                    class="absolute z-50 w-full mt-1 bg-white border-2 border-brand-blue/50 rounded-lg shadow-xl max-h-48 overflow-y-auto custom-scrollbar">
+                    
+                    <template x-for="nombre in nombres" :key="nombre">
+                        <li @click="nombreSeleccionado = nombre; comboAbierto = false"
+                            class="px-4 py-2.5 hover:bg-blue-50 text-slate-700 cursor-pointer font-semibold transition-colors border-b border-gray-100 last:border-0"
+                            :class="nombre === nombreSeleccionado ? 'bg-brand-blue/10 text-brand-blue' : ''"
+                            x-text="nombre">
+                        </li>
+                    </template>
+                    
+                </ul>
+            </div>
+
+            <div class="relative w-full sm:w-auto flex gap-3">
+                <button type="submit" 
+                        :disabled="!mesCompleto"
+                        class="bg-brand-blue hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold transition-colors shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed h-full">
+                    <i class="fas fa-search"></i> Consultar
+                </button>
+                
+                <template x-if="Object.keys(todosLosRegistros).length > 0">
+                    <button type="button" 
+                            @click="aplicarCambiosServidor()" 
+                            :disabled="!todasConfirmadas()"
+                            class="text-white px-6 py-2 rounded-lg font-bold transition-all shadow-md flex items-center justify-center gap-2 border-2 h-full"
+                            :class="todasConfirmadas() ? 'bg-green-500 hover:bg-green-600 border-green-400' : 'bg-gray-400 border-gray-300 cursor-not-allowed opacity-70'">
+                        <i class="fas fa-save text-lg"></i> 
+                        <span x-text="todasConfirmadas() ? 'Aplicar cambios' : 'Confirme días (' + diasListos() + '/' + Object.keys(todosLosRegistros).length + ')'"></span>
+                    </button>
+                </template>
+            </div>
+        </form>
+    </div>
+
+    <div class="flex-1 flex flex-col min-h-0">
+        {% if busqueda %}
+            {% if usuario %}
+                <div class="bg-blue-50 border-l-4 border-brand-blue p-4 rounded-lg mb-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-xl font-black text-slate-800 uppercase">{{ usuario.nombres }} {{ usuario.apellidos }}</h3>
+                        <div class="flex items-center gap-4 mt-1 text-sm font-bold text-gray-600">
+                            <span class="flex items-center"><i class="fas fa-id-card mr-2 text-brand-blue"></i> {{ usuario.cedula }}</span>
+                            <span class="flex items-center"><i class="fas fa-building mr-2 text-brand-blue"></i> {{ usuario.departamento }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {% if semanas %}
+                <div class="flex flex-col gap-4 pb-4 overflow-y-auto custom-scrollbar h-full pr-2">
+                    {% for semana in semanas %}
+                    <div x-data="{ open: true }" class="border-2 border-brand-blue/20 rounded-xl shadow-sm bg-white overflow-hidden mb-2">
+                        
+                        <button @click="open = !open" class="w-full flex items-center justify-between bg-blue-50/60 hover:bg-blue-100/70 px-6 py-3.5 transition-colors cursor-pointer border-b border-brand-blue/10">
+                            <div class="flex items-center gap-3">
+                                <i class="fas fa-calendar-week text-brand-blue text-xl"></i>
+                                <h4 class="text-lg font-black text-brand-blue uppercase tracking-wide">{{ semana.nombre }}</h4>
+                                <span class="bg-white text-brand-blue text-md font-bold px-3 py-1 rounded-full ml-2 shadow-sm border border-blue-100">
+                                    {{ semana.dias|length }} días registrados
+                                </span>
+                            </div>
+                            <div class="bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-blue-100">
+                                <i class="fas fa-chevron-down text-brand-blue transition-transform duration-300" :class="open ? 'rotate-180' : ''"></i>
+                            </div>
+                        </button>
+
+                        <div x-show="open" x-collapse>
+                            <div class="overflow-x-auto w-full">
+                                <table class="w-full text-left border-collapse min-w-[850px] table-fixed">
+                                    <thead>
+                                        <tr class="bg-brand-blue text-white text-sm uppercase tracking-wider text-center">
+                                            <th class="p-4 font-black border-b-2 border-brand-gray w-[15%]">Fecha</th>
+                                            <th class="p-4 font-black border-b-2 border-brand-gray w-[60%]">Registro de marcaciones</th>
+                                            <th class="p-4 font-black border-b-2 border-brand-gray w-[25%]">Estado / Novedad</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-200">
+                                        {% for reg in semana.dias %}
+                                        
+                                        {% set marcas_visibles = reg.marcaciones | selectattr('estado', '!=', 'Descartado') | list %}
+                                        
+                                        <tr class="transition-all duration-300" :class="fechasConfirmadas.includes('{{ reg.fecha }}') ? 'bg-emerald-50/60 shadow-inner' : 'bg-white even:bg-gray-50 hover:bg-blue-50/50'">
+                                            
+                                            <td class="p-4 align-middle whitespace-nowrap">
+                                                <div class="flex flex-col items-center justify-center bg-brand-blue/15 border border-gray-100 rounded-xl py-2 px-3 w-max mx-auto shadow-sm">
+                                                    <span class="font-bold text-slate-800 flex items-center">
+                                                        <i class="fas fa-calendar-day text-brand-blue mr-2"></i>{{ reg.fecha }}
+                                                    </span>
+                                                    <span class="text-sm font-black text-brand-blue uppercase tracking-widest mt-1 text-center">
+                                                        {{ reg.dia_semana }}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            
+                                            <td class="p-4 align-middle relative group" 
+                                                x-data="{ scrollLeft: 0, maxScroll: 0, 
+                                                          checkScroll() { 
+                                                              this.scrollLeft = $refs.container.scrollLeft; 
+                                                              this.maxScroll = $refs.container.scrollWidth - $refs.container.clientWidth; 
+                                                          },
+                                                          scroll(amount) { $refs.container.scrollBy({left: amount, behavior: 'smooth'}); }
+                                                        }" 
+                                                x-init="$nextTick(() => checkScroll())">
+                                                
+                                                <div class="relative flex items-center w-full">
+                                                    <button @click="scroll(-150)" x-show="obtenerMarcasActivas('{{ reg.fecha }}').length > 4 && scrollLeft > 5" x-transition.opacity class="absolute left-0 z-10 bg-brand-blue hover:bg-blue-700 text-white w-8 h-8 rounded-full shadow-md flex items-center justify-center">
+                                                        <i class="fas fa-chevron-left text-sm"></i>
+                                                    </button>
+
+                                                    <div x-ref="container" @scroll.debounce="checkScroll()"  class="flex flex-nowrap gap-3 items-center justify-start w-full pb-3 pt-1 px-7 overflow-x-auto custom-scrollbar transition-all duration-300" :class="fechasConfirmadas.includes('{{ reg.fecha }}') ? 'pointer-events-none opacity-50 grayscale-[50%]' : ''">
+                                                        
+                                                        <template x-for="(mark, i) in obtenerMarcasActivas('{{ reg.fecha }}')" :key="i">
+                                                            <div class="flex-shrink-0 flex flex-col items-center justify-center px-4 py-2 rounded-xl border-2 shadow-sm w-[115px] h-[85px] transition-colors"
+                                                                 :class="{
+                                                                     'bg-orange-50 border-orange-300': ['Pendiente', 'Inconsistente'].includes(mark.estado),
+                                                                     'bg-green-50 border-green-400': mark.estado === 'Actualizado',
+                                                                     'bg-emerald-50 border-emerald-400': mark.estado === 'Válido',
+                                                                     'border-brand-blue': mark.estado === 'Por Validar',
+                                                                     'bg-white border-gray-300': !['Pendiente', 'Inconsistente', 'Actualizado', 'Válido', 'Por Validar'].includes(mark.estado)
+                                                                 }">
+                                                                
+                                                                <div class="text-xl font-black"
+                                                                     :class="{
+                                                                         'text-orange-700': ['Pendiente', 'Inconsistente'].includes(mark.estado),
+                                                                         'text-green-700': mark.estado === 'Actualizado',
+                                                                         'text-emerald-700': mark.estado === 'Válido',
+                                                                         'text-brand-blue': mark.estado === 'Por Validar',
+                                                                         'text-slate-800': !['Pendiente', 'Inconsistente', 'Actualizado', 'Válido', 'Por Validar'].includes(mark.estado)
+                                                                     }" x-text="mark.hora"></div>
+                                                                
+                                                                <span class="text-[0.65rem] font-black uppercase tracking-wider mt-1 text-center leading-tight"
+                                                                      :class="{
+                                                                          'text-orange-600': ['Pendiente', 'Inconsistente'].includes(mark.estado),
+                                                                          'text-green-600': mark.estado === 'Actualizado',
+                                                                          'text-emerald-600': mark.estado === 'Válido',
+                                                                          'text-blue-500': mark.estado === 'Por Validar',
+                                                                          'text-gray-500': !['Pendiente', 'Inconsistente', 'Actualizado', 'Válido', 'Por Validar'].includes(mark.estado)
+                                                                      }">
+                                                                    <span x-text="mark.tipo"></span>
+                                                                    <span class="block opacity-90 text-[0.55rem]" x-text="'(' + mark.metodo + ')'"></span>
+                                                                </span>
+                                                            </div>
+                                                        </template>
+
+                                                        <template x-if="obtenerMarcasActivas('{{ reg.fecha }}').length === 0">
+                                                            <span class="text-gray-400 text-sm font-bold italic py-2 mx-auto">Sin marcaciones físicas</span>
+                                                        </template>
+                                                    </div>
+
+                                                    <button @click="scroll(150)" x-show="obtenerMarcasActivas('{{ reg.fecha }}').length > 4 && maxScroll > 5 && scrollLeft < maxScroll - 5" x-transition.opacity class="absolute right-0 z-10 bg-brand-blue hover:bg-blue-700 text-white w-8 h-8 rounded-full shadow-md flex items-center justify-center">
+                                                        <i class="fas fa-chevron-right text-sm"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+
+                                            <td class="p-4 align-middle">
+                                                <div class="flex items-center gap-4">
+                                                    
+                                                    <div class="flex flex-col gap-2">
+                                                        <button type="button" @click="toggleConfirmarDia('{{ reg.fecha }}')" 
+                                                                :title="esConfirmado('{{ reg.fecha }}') ? 'Desbloquear fila' : (esInconsistente('{{ reg.fecha }}') ? 'Corrija la inconsistencia en el lápiz primero' : 'Marcar como verificado')"
+                                                                :disabled="!esConfirmado('{{ reg.fecha }}') && esInconsistente('{{ reg.fecha }}')"
+                                                                class="w-10 h-10 rounded-full shadow transition-all border flex items-center justify-center flex-shrink-0 relative z-20"
+                                                                :class="{
+                                                                    'bg-orange-50 text-orange-500 border-orange-200 hover:bg-orange-100': esConfirmado('{{ reg.fecha }}'),
+                                                                    'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100': !esConfirmado('{{ reg.fecha }}') && !esInconsistente('{{ reg.fecha }}'),
+                                                                    'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60': !esConfirmado('{{ reg.fecha }}') && esInconsistente('{{ reg.fecha }}')
+                                                                }">
+                                                            <i class="fas" :class="esConfirmado('{{ reg.fecha }}') ? 'fa-unlock-alt' : 'fa-check'"></i>
+                                                        </button>
+
+                                                        <button type="button" @click="$dispatch('abrir-modal', { fecha: '{{ reg.fecha }}', dia: '{{ reg.dia_semana }}' })" 
+                                                                title="Gestionar jornada"
+                                                                :disabled="esConfirmado('{{ reg.fecha }}')"
+                                                                class="w-10 h-10 rounded-full shadow transition-all border flex items-center justify-center flex-shrink-0 relative z-20"
+                                                                :class="esConfirmado('{{ reg.fecha }}') ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60' : 'bg-white text-brand-blue border-gray-200 hover:bg-brand-blue hover:text-white'">
+                                                            <i class="fas fa-pencil-alt pointer-events-none"></i>
+                                                            <span x-show="fechasModificadas.includes('{{ reg.fecha }}')" class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white pointer-events-none"></span>
+                                                        </button>
+                                                    </div>
+
+                                                    <div class="flex flex-col gap-2 w-full">
+                                                        <template x-for="estado in obtenerEstadosDia('{{ reg.fecha }}')">
+                                                            <span class="px-3 py-1.5 rounded-lg text-[0.70rem] font-black uppercase tracking-wider border-2 shadow-sm w-full text-center"
+                                                                  :class="{
+                                                                      'bg-blue-50 text-brand-blue border-blue-300': estado === 'Por Validar',
+                                                                      'bg-red-50 text-red-700 border-red-400': estado === 'Inconsistente',
+                                                                      'bg-green-50 text-green-700 border-green-400': estado === 'Actualizado',
+                                                                      'bg-emerald-50 text-emerald-700 border-emerald-400': estado === 'Válido'
+                                                                  }" x-text="estado">
+                                                            </span>
+                                                        </template>
+                                                        <template x-if="obtenerEstadosDia('{{ reg.fecha }}').length === 0">
+                                                            <span class="text-gray-400 text-xs font-bold italic w-full text-center">Sin estado</span>
+                                                        </template>
+                                                    </div>
+                                                    
+                                                </div>
+                                            </td>
+
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div> 
+                    </div>
+                    {% endfor %} 
+                </div>
+                {% endif %}
+            {% else %}
+                <div class="m-auto flex flex-col items-center justify-center py-6 border-2 border-dashed border-red-200 bg-red-50 rounded-xl w-full max-w-lg">
+                    <i class="fas fa-user-times text-3xl text-red-400 mb-2"></i>
+                    <p class="text-red-700 font-bold text-lg text-center">Usuario no encontrado</p>
+                    <p class="text-red-600 font-semibold text-sm text-center mt-1">Verifica la cédula o el nombre e intenta nuevamente.</p>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="m-auto flex flex-col items-center justify-center py-4 text-center max-w-md">
+                
+                <div class="mb-4 text-gray-300 opacity-60 m-auto flex items-center justify-center w-20 h-20">
+                    <span class="fa-stack fa-3x">
+                      <i class="fas fa-folder fa-stack-2x"></i>
+                      <i class="fas fa-search fa-stack-1x text-gray-500"></i>
+                    </span>
+                </div>
+
+                <h3 class="text-xl font-bold text-slate-700 mb-2">Consulta el historial</h3>
+                <p class="text-gray-500 font-semibold">Selecciona el mes y luego escoge al empleado para visualizar sus marcaciones en el archivo.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <template x-teleport="body">
+        <div x-show="modalAbierto" style="display: none;" 
+             @wheel.prevent @touchmove.prevent
+             class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+             
+            <div @click.away="cerrarModal()" class="bg-white rounded-2xl shadow-2xl p-6 md:p-8 w-full max-w-4xl transform transition-all flex flex-col max-h-[85vh] m-4">
+                
+                <div class="flex items-start justify-between border-b border-gray-200 pb-5 mb-5 flex-shrink-0 gap-4">
+                    
+                    <div class="flex flex-col gap-1 min-w-max">
+                        <div class="flex items-center gap-3">
+                            <i class="fas fa-edit text-brand-blue text-3xl"></i>
+                            <h3 class="text-3xl font-black text-slate-800">Editar Jornada</h3>
+                        </div>
+                        <p class="text-brand-blue font-black tracking-wider text-base mt-2 uppercase" x-text="modalFechaDisplay"></p>
+                    </div>
+                    
+                    <template x-if="datosUsuario">
+                        <div class="flex flex-col items-end gap-1.5 bg-blue-50/50 p-3 rounded-xl border border-blue-100 flex-1 ml-4 shadow-sm text-right justify-center min-h-[70px]">
+                            <span class="font-black text-slate-800 text-lg uppercase tracking-tight" x-text="datosUsuario.nombres"></span>
+                            
+                            <div class="flex items-center gap-4 text-sm font-bold text-gray-600">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fas fa-id-card text-brand-blue"></i> 
+                                    <span x-text="datosUsuario.cedula"></span>
+                                </span>
+                                <div class="w-1.5 h-1.5 rounded-full bg-brand-blue/30"></div>
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fas fa-building text-brand-blue"></i> 
+                                    <span x-text="datosUsuario.departamento"></span>
+                                </span>
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <button @click="cerrarModal()" class="text-gray-400 hover:text-red-500 transition-colors bg-gray-100 p-2.5 rounded-full flex-shrink-0 ml-2">
+                        <i class="fas fa-times text-xl leading-none"></i>
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 mb-4 overscroll-contain"
+                     @wheel.stop @touchmove.stop>
+                     
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-gray-100 text-slate-600 text-xs uppercase tracking-wider text-center">
+                                
+                                <th class="p-3 font-black border-b-2 border-brand-blue bg-brand-blue text-white shadow-sm">
+                                    <i class="fas fa-edit mr-1"></i> Hora
+                                </th>
+                                <th class="p-3 font-black border-b-2 border-brand-blue bg-brand-blue text-white shadow-sm">
+                                    <i class="fas fa-edit mr-1"></i> Tipo de Marcación
+                                </th>
+                                
+                                <th class="p-3 font-bold border-b-2 border-gray-200">Método</th>
+                                <th class="p-3 font-bold border-b-2 border-gray-200">Estado</th>
+                                <th class="p-3 font-bold border-b-2 border-gray-200">Acción</th>
+                                
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <template x-for="(marca, index) in modalMarcaciones" :key="index">
+                                <tr class="transition-colors hover:bg-gray-50" :class="marca.estado === 'Descartado' ? 'opacity-60 bg-red-50' : ''">
+                                    <td class="p-3 text-center">
+                                        <input type="time" 
+                                               x-model="marca.hora" 
+                                               @change="marca.estado = 'Actualizado'" 
+                                               class="border-2 border-brand-blue rounded-md p-1.5 text-center font-black text-brand-blue w-28 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-blue/50 transition-all hover:bg-blue-50/50 cursor-pointer">
+                                    </td>
+                                    <td class="p-3 text-center">
+                                        <select x-model="marca.tipo" 
+                                                @change="marca.estado = 'Actualizado'" 
+                                                class="border-2 border-brand-blue rounded-md p-1.5 text-sm font-black text-brand-blue w-full bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-blue/50 transition-all hover:bg-blue-50/50 cursor-pointer">
+                                            
+                                            <option :value="marca.tipo" 
+                                                    x-text="marca.tipo" 
+                                                    :hidden="['Entrada', 'Salida Almuerzo', 'Regreso Almuerzo', 'Salida', 'Salida Comisión', 'Regreso Comisión'].includes(marca.tipo)">
+                                            </option>
+                                            
+                                            <option value="Entrada">Entrada</option>
+                                            <option value="Salida Almuerzo">Salida Almuerzo</option>
+                                            <option value="Regreso Almuerzo">Regreso Almuerzo</option>
+                                            <option value="Salida">Salida</option>
+                                            <option value="Salida Comisión">Salida Comisión</option>
+                                            <option value="Regreso Comisión">Regreso Comisión</option>
+                                            
+                                        </select>
+                                    </td>
+                                    <td class="p-3 text-center text-xs font-bold text-gray-500 uppercase" x-text="marca.metodo"></td>
+                                    <td class="p-3 text-center">
+                                        <select x-model="marca.estado" class="border border-gray-300 rounded-md p-1 text-sm font-bold focus:border-brand-blue outline-none"
+                                                :class="{'text-blue-600': marca.estado==='Por Validar', 'text-green-600': marca.estado==='Actualizado' || marca.estado==='Válido', 'text-red-600': marca.estado==='Descartado' || marca.estado==='Inconsistente'}">
+                                            <option value="Válido">Válido</option>
+                                            <option value="Actualizado">Actualizado</option>
+                                            <option value="Descartado">Descartado</option>
+                                            <option value="Por Validar">Por Validar</option>
+                                            <option value="Inconsistente">Inconsistente</option>
+                                   
+                                        </select>
+                                    </td>
+                                    <td class="p-3 text-center">
+                                        <button @click="alternarDescartado(index)" title="Descartar/Restaurar"
+                                                class="w-8 h-8 rounded-full flex items-center justify-center transition-colors mx-auto"
+                                                :class="marca.estado === 'Descartado' ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'">
+                                            <i class="fas" :class="marca.estado === 'Descartado' ? 'fa-undo' : 'fa-trash'"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+
+                    <div class="mt-4 flex justify-center">
+                        <button @click="agregarNuevoRegistro()" class="bg-blue-50 text-brand-blue border border-brand-blue/30 border-dashed hover:bg-blue-100 hover:border-brand-blue w-full py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+                            <i class="fas fa-plus-circle"></i> Agregar nueva marcación manual
+                        </button>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4 flex gap-4 flex-shrink-0">
+                    <button @click="cerrarModal()" class="flex-1 py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors">
+                        Cancelar
+                    </button>
+                    <button @click="guardarModal()" class="flex-1 py-3 px-4 bg-brand-blue hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-colors flex justify-center items-center gap-2">
+                        <i class="fas fa-check-circle"></i> Guardar en memoria
+                    </button>
+                </div>
+                
+            </div>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/user_mark_day_records.js') }}"></script>
+{% endblock %}

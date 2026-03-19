@@ -6,20 +6,6 @@ logging.basicConfig(level=logging.INFO)
 
 STORAGE_BASE_PATH = '/storage_datos/storage-files'
 
-def get_csv_storage():
-    
-    csv_path = os.path.join(STORAGE_BASE_PATH, 'files-csv')
-    #crea la carpeta files-csv
-    if not os.path.exists(csv_path): 
-        try:
-            os.makedirs(csv_path) 
-            logging.info(f"Carpeta creada exitosamente en: {csv_path}")
-
-        except Exception as e:
-            logging.error(f"Error al crear la carpeta: {e}")
-
-    return csv_path
-
 # FUNCIÓN para los PDFs omr
 def get_omr_storage():
     pdf_path = os.path.join(STORAGE_BASE_PATH, 'pdf-emp-downloads')
@@ -32,8 +18,8 @@ def get_omr_storage():
     return pdf_path
 
 
-# Funciones para el escaner de OMR
-# FUNCIÓN para los PDFs temporales (Subidos para validación de usuario)
+
+# FUNCIÓN para los archivos temporales (Subidos para validación de usuario)
 def get_temp_uploads_storage():
     temp_path = os.path.join(STORAGE_BASE_PATH, 'temp-uploads')
     if not os.path.exists(temp_path):
@@ -43,6 +29,21 @@ def get_temp_uploads_storage():
         except Exception as e:
             logging.error(f"Error al crear la carpeta Temporal: {e}")
     return temp_path
+
+
+# funcion para guardar carpeta parquet
+def get_uploads_storage_parquet():
+    path = os.path.join(STORAGE_BASE_PATH, 'uploads', 'parquets')
+    if not os.path.exists(path):
+        try:
+            # os.makedirs crea la carpeta 'uploads' (si no existe) y luego 'parquets' adentro
+            os.makedirs(path)
+            logging.info(f"Carpeta de Parquets persistentes creada exitosamente en: {path}")
+        except Exception as e:
+            logging.error(f"Error al crear la jerarquía de carpetas para Parquets: {e}")
+            
+    return path
+
 
 
 # FUNCIÓN para los PDFs finales (Validados y guardados para auditoría) Crea la estructura: /storage_datos/storage-files/uploads/omr-guardados/EMP-00001

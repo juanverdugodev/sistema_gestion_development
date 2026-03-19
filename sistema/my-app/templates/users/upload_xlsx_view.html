@@ -1,0 +1,154 @@
+{% extends "base/base.html" %}
+
+{% block content %}
+<div x-data="uploadHandler()" 
+     data-url-process="{{ url_for('main.process_upload_xlsx') }}"
+     data-url-confirm="{{ url_for('main.confirm_upload_xlsx') }}"
+     data-url-cancel="{{ url_for('main.cancel_upload_xlsx') }}"
+     class="h-full">
+    
+    <div class="bg-white py-5 px-6 rounded-2xl shadow-lg border border-gray-300 flex flex-col gap-1 min-h-[calc(100vh-110px)] h-full relative overflow-hidden">
+        
+        <div class="flex flex-shrink-0 items-start md:items-center border-b border-gray-100 pb-2 gap-2">
+            <a href="{{ url_for('main.home') }}" class="text-brand-blue hover:text-blue-700 transition-colors bg-blue-50 p-2 rounded-full hover:bg-blue-100 flex-shrink-0 mt-1 md:mt-0 shadow-sm">
+                <i class="fas fa-arrow-left text-xl"></i>
+            </a>
+            <div class="flex flex-col md:flex-row justify-start items-start md:items-center gap-2 md:gap-6 w-full">
+                <h2 class="text-2xl font-bold text-slate-800">Cargar registros</h2>
+                <div class="hidden md:block w-1 h-8 bg-brand-blue rounded-full"></div>
+                <div class="md:hidden w-full h-1 bg-brand-blue rounded-full my-1"></div>
+                <p class="text-gray-700 text-lg font-semibold">Sube el archivo excel con los registros de marcaciones.</p>
+            </div>
+        </div>
+        
+        <div class="flex-1 flex flex-col lg:flex-row gap-2 items-stretch min-h-0 mt-4">
+            
+            <div class="w-full lg:w-1/2 flex flex-col">
+                <div class="bg-blue-50 border-l-4 border-brand-blue rounded-xl p-4 shadow-md flex-1 flex flex-col overflow-y-auto">
+                    <div class="flex items-center text-brand-blue mb-4 flex-shrink-0">
+                        <i class="fas fa-info-circle text-2xl mr-3"></i>
+                        <h3 class="text-xl font-bold">Instrucciones de subida</h3>
+                    </div>
+                    
+                    <ul class="text-slate-700 space-y-3 font-medium flex-1">
+                        <li class="flex items-start">
+                            <i class="fas fa-table text-green-600 mt-1 mr-3 text-lg"></i>
+                            <span>El archivo debe contener obligatoriamente la <strong>primera fila como encabezados</strong>.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-columns text-brand-blue mt-1 mr-3 text-lg"></i>
+                            <span>Asegúrate de incluir las columnas: <strong>departamento, nombre, cedula, fecha, hora, tipoMarcacion, verificacion</strong>. El orden no importa.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-calendar-check text-cyan-500 mt-1 mr-3 text-lg"></i>
+                            <span>La fecha debe tener un formato reconocible y la hora debe estar en formato 24h (ej. 14:30:00).</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-file-excel text-green-500 mt-1 mr-3 text-lg"></i>
+                            <span>Asegúrate de que el documento esté guardado únicamente en formato <strong>.XLSX</strong>.</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="w-full lg:w-1/2 flex flex-col">
+                <input type="file" id="fileInput" accept=".xlsx, .xls" class="hidden" @change="handleFileSelect">
+                <div @click="document.getElementById('fileInput').click()"
+                     class="flex-1 border-4 border-dashed border-brand-blue/40 bg-gray-50 hover:bg-blue-50 hover:border-brand-blue/70 rounded-3xl flex flex-col items-center justify-center cursor-pointer transition-colors duration-300 shadow-inner group p-6">
+                    
+                    <div class="w-24 h-24 bg-white rounded-full shadow-md flex items-center justify-center mb-6">
+                        <i class="fas fa-file-excel text-5xl text-green-600 group-hover:-translate-y-1 transition-transform duration-300"></i>
+                    </div>
+                    
+                    <h3 class="text-2xl font-bold text-slate-800 mb-2 text-center">Haz clic para explorar</h3>
+                    <p class="text-gray-600 font-semibold text-lg mb-6 text-center">o arrastra tu excel en cualquier parte de la pantalla</p>
+                    
+                    <span class="bg-blue-100 text-brand-blue text-sm font-bold px-5 py-2 rounded-full border border-brand-blue/30 shadow-sm">
+                        Solo archivos .xlsx
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div> <template x-teleport="body">
+        
+        <div x-show="showModal" style="display: none;" 
+             @wheel.prevent @touchmove.prevent
+             class="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
+            
+            <div x-show="showModal" 
+                 x-transition:enter="transition ease-out duration-300 transform"
+                 x-transition:enter-start="opacity-0 scale-90 translate-y-4"
+                 x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                 class="relative bg-white w-full max-w-3xl rounded-2xl shadow-2xl p-6 md:p-8 m-4 flex flex-col max-h-[90vh]">
+                
+                <div class="flex items-center justify-between border-b border-gray-200 pb-4 mb-4 flex-shrink-0">
+                    <h3 class="text-2xl font-black text-slate-800 flex items-center">
+                        <i class="fas fa-clipboard-check text-green-500 mr-3"></i> Validar Archivo
+                    </h3>
+                    <button @click="cancelarGuardado()" class="text-gray-400 hover:text-red-500 transition-colors bg-gray-100 hover:bg-red-50 p-2 rounded-full">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar overscroll-contain" 
+                     @wheel.stop @touchmove.stop 
+                     x-if="excelSummary">
+                     
+                    <div class="bg-blue-50 border-l-4 border-brand-blue p-5 rounded-xl mb-6 flex flex-col gap-5">
+                        
+                        <p class="text-gray-700 text-lg md:text-xl text-center leading-relaxed">
+                            Se encontraron <strong class="text-brand-blue text-2xl mx-1" x-text="excelSummary?.total_filas"></strong> registros en total, 
+                            de <strong class="text-purple-600 text-2xl mx-1" x-text="excelSummary?.total_personal"></strong> funcionarios, 
+                            dentro de <strong class="text-green-600 text-2xl mx-1" x-text="excelSummary?.total_departamentos"></strong> departamentos.
+                        </p>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-center flex flex-col justify-center items-center transform transition hover:-translate-y-1">
+                                <i class="fas fa-list-ol text-gray-300 text-2xl mb-2"></i>
+                                <span class="block text-xs font-bold text-gray-500 uppercase tracking-wider">Total Registros</span>
+                                <span class="text-4xl font-black text-brand-blue mt-1" x-text="excelSummary?.total_filas"></span>
+                            </div>
+                            
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-center flex flex-col justify-center items-center transform transition hover:-translate-y-1">
+                                <i class="fas fa-users text-gray-300 text-2xl mb-2"></i>
+                                <span class="block text-xs font-bold text-gray-500 uppercase tracking-wider">Funcionarios</span>
+                                <span class="text-4xl font-black text-purple-600 mt-1" x-text="excelSummary?.total_personal"></span>
+                            </div>
+                            
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-center flex flex-col justify-center items-center transform transition hover:-translate-y-1">
+                                <i class="fas fa-building text-gray-300 text-2xl mb-2"></i>
+                                <span class="block text-xs font-bold text-gray-500 uppercase tracking-wider">Departamentos</span>
+                                <span class="text-4xl font-black text-green-600 mt-1" x-text="excelSummary?.total_departamentos"></span>
+                            </div>
+                        </div>
+
+                    </div>
+                    
+                    <p class="text-gray-600 font-semibold mb-4 text-center">
+                        <i class="fas fa-exclamation-triangle text-yellow-500 mr-1"></i> La agrupación de marcaciones y limpieza de datos se realizará en el siguiente paso.
+                    </p>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4 mt-2 flex flex-col sm:flex-row gap-4 flex-shrink-0">
+                    <button @click="cancelarGuardado()" class="flex-1 py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors shadow-sm">
+                        Descartar Archivo
+                    </button>
+                    <button @click="confirmarGuardado()" 
+                            class="flex-1 py-3 px-4 bg-brand-blue hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-colors flex justify-center items-center gap-2">
+                        <i class="fas fa-cogs"></i> Iniciar Importación
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block modals %}
+    {% include 'components/drag_overlay.html' %}
+    {% include 'components/loading_overlay.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/upload_xlsx.js') }}"></script>
+{% endblock %}

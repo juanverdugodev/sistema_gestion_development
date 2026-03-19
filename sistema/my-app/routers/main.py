@@ -6,7 +6,8 @@ from controllers.generate_omr_controller import generate_format_omr
 from controllers.upload_omr_controller import upload_page_controller, process_upload_controller, cancel_upload_controller, confirm_upload_controller
 from controllers.profile_controller import view_profile_controller, update_profile_controller
 from controllers.calendar_controller import calendar_controller
-from controllers.user_mark_day_controller import user_mark_day_controller
+from controllers.user_mark_day_records_controller import obtener_nombres_parquet, validar_marcaciones
+from controllers.upload_xlsx_controller import upload_xlsx_page_controller, process_upload_xlsx_controller, cancel_upload_xlsx_controller, confirm_upload_xlsx_controller
 from utils.file_manager import get_omr_storage
 from utils.decorator import role_required
 
@@ -82,11 +83,45 @@ def cancel_upload_omr():
 def confirm_upload_omr():
     return confirm_upload_controller()
 
+
+# Endpoints para consulta de marcaciones
+
 @main.route('/home/mark-day/user-records', methods=['GET'])
 @role_required(['Administrador']) 
 def admin_user_records():
-    return user_mark_day_controller()
+    # Ruta principal que renderiza la vista y la tabla
+    return validar_marcaciones()
 
+@main.route('/api/records/get-names', methods=['GET'])
+@role_required(['Administrador'])
+def get_names_by_month_api():
+    # API invocada por Alpine.js para llenar el selector de nombres dinámicamente
+    return obtener_nombres_parquet()
+
+
+
+# Endpoints para carga de archivos .xlsx
+@main.route('/home/mark-day/upload-xlsx', methods=['GET'])
+@role_required(['Administrador']) 
+def upload_xlsx_view():
+    return upload_xlsx_page_controller()
+
+@main.route('/api/register/upload-xlsx/process', methods=['POST'])
+@role_required(['Administrador']) 
+def process_upload_xlsx():
+    return process_upload_xlsx_controller()
+
+@main.route('/api/register/upload-xlsx/cancel', methods=['POST'])
+@role_required(['Administrador']) 
+def cancel_upload_xlsx():
+    return cancel_upload_xlsx_controller()
+
+@main.route('/api/register/upload-xlsx/confirm', methods=['POST'])
+@role_required(['Administrador']) 
+def confirm_upload_xlsx():
+    return confirm_upload_xlsx_controller()
+
+# Enpoint para el cambio de password
 @main.route('/change_password', methods=['GET', 'POST'])
 def change_password():
     return change_password_controller()

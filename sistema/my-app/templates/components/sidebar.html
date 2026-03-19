@@ -5,15 +5,18 @@
     </div>
     
     <nav class="flex-1 px-2 py-4 space-y-2 bg-slate-800 border border-slate-700 rounded-2xl shadow-sm">
-        {% if request.endpoint != 'main.home' %}
-        <a href="{{ url_for('main.home') }}" 
-           class="flex items-center py-3 px-4 rounded-lg hover:bg-slate-700 hover:text-white transition-all duration-200">
+        
+        <a href="{{ url_for('main.home') }}"
+           draggable="false" 
+           class="flex items-center py-3 px-4 rounded-xl transition-all duration-200 text-sm
+                  {% if request.endpoint == 'main.home' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
             <i class="fa-solid fa-house w-6 text-brand-blue"></i> Inicio
         </a>
-        {% endif %}
-        {% if request.endpoint != 'main.mark_day' %}
+
         <a href="{{ url_for('main.mark_day') }}"
-           class="flex items-center py-3 px-4 rounded-lg hover:bg-slate-700 hover:text-white transition-all duration-200">
+           draggable="false"
+           class="flex items-center py-3 px-4 rounded-lg transition-all duration-200 text-sm
+                  {% if request.endpoint == 'main.mark_day' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
             <i class="fa-solid fa-calendar-check w-6 text-brand-blue"></i>
             {% if session.rol == 'Administrador' %}
                 Marcar jornada
@@ -21,25 +24,32 @@
                 Jornada
             {% endif %}
         </a>
-        {% endif %}
 
-        {% if request.endpoint != 'main.view_calendar' %}
         <a href="{{ url_for('main.view_calendar') }}"
-            class="flex items-center py-3 px-4 rounded-lg hover:bg-slate-700 hover:text-white transition-all duration-200">
+            draggable="false"
+            class="flex items-center py-3 px-4 rounded-xl transition-all duration-200 text-sm
+                  {% if request.endpoint == 'main.view_calendar' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
             <i class="fa-solid fa-calendar-days w-6 text-brand-blue"></i> Calendario
         </a>
-        {% endif %}
 
         {% if session.rol == 'Administrador' %}
-            {% if request.endpoint != 'main.admin_user_records' %}
+            
             <a href="{{ url_for('main.admin_user_records') }}"
-            class="flex items-center py-3 px-4 rounded-lg hover:bg-slate-700 hover:text-white transition-all duration-200">
-                <i class="fa-solid fa-users-viewfinder w-6 text-brand-blue"></i> Consulta de Usuarios
+               draggable="false"
+               class="flex items-center py-3 px-4 rounded-xl transition-all duration-200 text-sm
+                      {% if request.endpoint == 'main.admin_user_records' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
+                <i class="fa-solid fa-users-viewfinder w-6 text-brand-blue"></i> Registros funcionarios
             </a>
-            {% endif %}
+
+            <a href="{{ url_for('main.upload_xlsx_view') }}"
+               draggable="false"
+               class="flex items-center py-3 px-4 rounded-xl transition-all duration-200 text-sm
+                      {% if request.endpoint == 'main.upload_xlsx_view' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
+                <i class="fa-solid fa-database w-6 text-brand-blue"></i> Cargar registros
+            </a>
+            
         {% endif %}
 
     </nav>
-
 
 </aside>
