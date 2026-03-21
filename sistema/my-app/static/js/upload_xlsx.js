@@ -102,7 +102,7 @@ window.uploadHandler = function() {
 
         confirmarGuardado() {
             window.dispatchEvent(new CustomEvent('show-loading', {
-                detail: { message: "Procesando registros. Esto puede tomar unos segundos..." }
+                detail: { message: "Procesando registros. Esto puede tomar un minuto..." }
             }));
 
             // Usamos la URL de confirmación

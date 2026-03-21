@@ -37,11 +37,7 @@
                         </li>
                         <li class="flex items-start">
                             <i class="fas fa-columns text-brand-blue mt-1 mr-3 text-lg"></i>
-                            <span>Asegúrate de incluir las columnas: <strong>departamento, nombre, cedula, fecha, hora, tipoMarcacion, verificacion</strong>. El orden no importa.</span>
-                        </li>
-                        <li class="flex items-start">
-                            <i class="fas fa-calendar-check text-cyan-500 mt-1 mr-3 text-lg"></i>
-                            <span>La fecha debe tener un formato reconocible y la hora debe estar en formato 24h (ej. 14:30:00).</span>
+                            <span>Asegúrate de incluir las columnas: <strong>Dpto., Nombre, AC_No, Fecha/Hora, Marc-Ent/Sal, Reloj ID, No. Cédula, Incidencia, Verificación y CardNo</strong>. El orden no importa.</span>
                         </li>
                         <li class="flex items-start">
                             <i class="fas fa-file-excel text-green-500 mt-1 mr-3 text-lg"></i>
@@ -73,7 +69,7 @@
         
         <div x-show="showModal" style="display: none;" 
              @wheel.prevent @touchmove.prevent
-             class="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
+             class="fixed inset-0 z-[9000] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
             
             <div x-show="showModal" 
                  x-transition:enter="transition ease-out duration-300 transform"

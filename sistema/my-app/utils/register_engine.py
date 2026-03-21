@@ -3,235 +3,215 @@
 import pandas as pd
 import numpy as np
 import logging
-from db.database_connector import get_db_connection
+import matplotlib
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from io import BytesIO
+import base64
+
+# FUNDAMENTAL PARA FLASK: Evita que Matplotlib intente abrir ventanas gráficas y crashee el servidor
+matplotlib.use('Agg')
 
 logger = logging.getLogger(__name__)
 
+def asignar_marcacion(hora):
+    """Celda 14 del cuaderno"""
+    limEntrada = 12
+    if hora < limEntrada:  
+        return 'Entrada'
+    else:
+        return 'Salida'
+
+def etiquetar_clusters(numClusters, centroides):
+    """Celda 14 del cuaderno"""
+    df_cluster = pd.DataFrame(centroides, columns=['centroide'])
+    df_cluster_ordenado = df_cluster.sort_values(by='centroide')
+
+    if numClusters >= 2:
+        min_centroide = df_cluster_ordenado['centroide'].min()
+        df_cluster_ordenado.loc[df_cluster_ordenado['centroide'] == min_centroide, 'marcacion'] = 'Entrada'
+        
+        max_centroide = df_cluster_ordenado['centroide'].max()
+        df_cluster_ordenado.loc[df_cluster_ordenado['centroide'] == max_centroide, 'marcacion'] = 'Salida'
+
+        df_vacios = df_cluster_ordenado[df_cluster_ordenado['marcacion'].isna()]
+
+        if len(df_vacios) >= 2:
+            min_centroide_central = df_vacios['centroide'].min()
+            max_centroide_central = df_vacios['centroide'].max()
+            df_cluster_ordenado.loc[df_cluster_ordenado['centroide'] == min_centroide_central, 'marcacion'] = 'Salida Almuerzo'
+            df_cluster_ordenado.loc[df_cluster_ordenado['centroide'] == max_centroide_central, 'marcacion'] = 'Regreso Almuerzo'
+            df_cluster_ordenado['marcacion'] = df_cluster_ordenado['marcacion'].replace(np.nan, 'Desconocido') 
+        else:
+            df_cluster_ordenado['marcacion'] = df_cluster_ordenado['marcacion'].replace(np.nan, 'Desconocido') 
+    else: 
+        df_cluster_ordenado['marcacion'] = df_cluster_ordenado['centroide'].apply(asignar_marcacion)
+
+    return df_cluster_ordenado
+
 
 def clusterizar(df):
+    """
+    Agrupa toda la lógica del cuaderno (Celdas 2 a la 16).
+    Recibe el DataFrame crudo leído del Excel y devuelve el DataFrame procesado.
+    """
+    
+    # --- INICIO DE ESTRUCTURACIÓN DE CABECERAS PARA LOS 3 PARQUETS ---
 
+    # 1. ESTRUCTURACIÓN DEL PARQUET PRINCIPAL (df)
+    # Celda 2: Renombrar (Ajusta los nombres de las columnas leídas del Excel)
+    df = df.rename(columns={
+        'Dpto.': 'departamento',
+        'Nombre': 'nombre',
+        'AC_No': 'numAcceso',
+        'Fecha/Hora': 'fecha_hora',
+        'Marc-Ent/Sal':'tipoMarcacion',
+        'Reloj ID':'relojID',
+        'No. Cédula':'cedula',
+        'Incidencia':'incidencia',
+        'Verificación':'verificacion',
+        'CardNo':'numTarjeta'
+    })
+
+    # Celda 3: Eliminar columnas (Borra cabeceras que no se usarán)
+    df = df.drop(columns=['relojID', 'incidencia', 'numTarjeta'], errors='ignore')
+
+    # Celda 5: Homogeneizar
+    if 'verificacion' in df.columns:
+        df['verificacion'] = df['verificacion'].str.upper()
+
+    # Celda 6: Fechas (Crea las nuevas columnas 'fecha' y 'hora' extrayéndolas de 'fecha_hora')
+    df['fecha_hora'] = pd.to_datetime(df['fecha_hora'], format='%d/%m/%Y %H:%M:%S')
+    df['fecha'] = df['fecha_hora'].dt.date
+    df['hora'] = df['fecha_hora'].dt.time
+
+    unique_names = df['nombre'].dropna().unique().tolist()
+
+    # 2. CREACIÓN DESDE CERO DEL PARQUET DE RESUMEN MENSUAL (df_resumen)
+    # Celda 8: Estructura resumen
+    columnasResumen = ['funcionario','diasAsistidos','tendEntrada','tendSalidaAl','tendEntradaAl','tendSalida','entradaOficial','salidaOficial','atrasoTotal', 'grafica']
+    df_resumen = pd.DataFrame(columns=columnasResumen)
+    df_resumen['funcionario'] = df_resumen['funcionario'].astype(str)
+    # Se omiten temporalmente los astype y to_timedelta de columnas vacías para evitar errores de pandas con datos sin inicializar
+    
+    # 3. CREACIÓN DESDE CERO DEL PARQUET DIARIO (df_diario)
+    # Celda 9: Estructura diario
+    columnasDiario = ['funcionario','fecha','numMarcacionesInicial','numMarcacionesFinal','atrasoEntrada','atrasoAlmuerzo','atrasoSalida']
+    df_diario = pd.DataFrame(columns=columnasDiario)
+
+    # --- FIN DE ESTRUCTURACIÓN INICIAL DE CABECERAS ---
+
+    # Celda 10: Generando data resumen
+    filas_resumen = []
+    for nombre_filtrado in unique_names:
+        dias = len(df.loc[(df['nombre'] == nombre_filtrado)]['fecha'].unique())
+        filas_resumen.append({'funcionario': str(nombre_filtrado), 'diasAsistidos': dias})
+    df_resumen = pd.concat([df_resumen, pd.DataFrame(filas_resumen)], ignore_index=True)
+
+    # Segunda Celda 9: Generando data diario
+    filas_diario = []
+    for nombre_filtrado in unique_names:
+        fechas_unicas = df.loc[(df['nombre'] == nombre_filtrado)]['fecha'].unique()
+        for fecha_filtrada in fechas_unicas:
+            registro_temp = df.loc[(df['nombre'] == nombre_filtrado) & (df['fecha'] == fecha_filtrada)]
+            cant_registros = len(registro_temp['hora'].values)
+            filas_diario.append({
+                'funcionario': str(nombre_filtrado),
+                'fecha': fecha_filtrada,
+                'numMarcacionesInicial': cant_registros
+            })
+    df_diario = pd.concat([df_diario, pd.DataFrame(filas_diario)], ignore_index=True)
+
+    # --- INICIO DE INYECCIÓN DE CABECERAS FINALES AL PARQUET PRINCIPAL ---
+
+    # Añadimos la columna vacía al DF principal
+    # forzamos el tipo 'object' para que acepte texto sin que PyArrow falle
+    df['marcacionCluster'] = np.nan
+    df['marcacionCluster'] = df['marcacionCluster'].astype('object')
+
+    # --- NUEVA COLUMNA: MARCACIÓN REAL ---
+    # Guarda la corrección manual del administrador (Nace nula)
     df['marcacionReal'] = np.nan
+    df['marcacionReal'] = df['marcacionReal'].astype('object')
 
-    return df
+    # --- NUEVA COLUMNA DE ESTADO PARA EL FRONTEND ---
+    # Inicializa todos los registros como nulos (NaN) para que en el futuro 
+    # se sobreescriban con 'Válido' o 'Actualizado'.
+    df['tipoValidacion'] = np.nan
+    df['tipoValidacion'] = df['tipoValidacion'].astype('object')
 
+    # --- FIN DE INYECCIÓN DE CABECERAS FINALES ---
 
-def process_excel_import(file_path):
-    """
-    Función principal del motor de registro.
-    Lee el Excel con encabezados, previene 'NaN', evita duplicados exactos 
-    y retorna estadísticas para el frontend.
-    """
-    
-    # 1. ESTABLECER CONEXIÓN Y TRANSACCIÓN
-    conn = get_db_connection(target_db='sistema_gestion_registros_db')
-    
-    if not conn:
-        logger.error("No se pudo conectar a la base de datos de registros.")
-        return {"exito": False, "error": "No se pudo conectar a la base de datos de registros."}
-
-    cursor = conn.cursor(dictionary=True)
-    
-    try:
-        # 2. CARGA DE DATOS (Pandas)
-        df = pd.read_excel(file_path)
-        df.columns = df.columns.str.strip().str.lower().str.replace(' ', '').str.replace('_', '')
-        df = df.astype(object).where(pd.notna(df), None)
-
-        # Extraemos las fechas únicas que vienen en este Excel para optimizar la BD
-        df['fecha'] = pd.to_datetime(df['fecha']).dt.strftime('%Y-%m-%d')
-        fechas_excel = df['fecha'].dropna().unique().tolist()
-
-        # 3. CARGAR CACHÉS (El escudo de validación y anti-duplicados)
-        dept_cache = _load_departamentos_cache(cursor)
-        bandera_cache = _load_banderas_cache(cursor)
-        func_by_cedula, func_by_name = _load_funcionarios_cache(cursor)
+    # Celda 16: El bucle principal de KMeans y Gráficas
+    for nombre_filtrado in unique_names:
+        columnas_a_seleccionar = ['fecha', 'hora']
+        df_f = df[df['nombre'] == nombre_filtrado][columnas_a_seleccionar].copy()
         
-        # Le pasamos la lista de fechas al caché de registros
-        registros_cache = _load_registros_cache(cursor, fechas_excel)
-
-        # Variables para tracking (para el log final y la vista web)
-        registros_insertados = 0
-        registros_omitidos = 0
-
-        # 4. ITERACIÓN PRINCIPAL
-        for index, row in df.iterrows():
+        if df_f.empty:
+            continue
             
-            raw_dept = row.get('departamento')
-            raw_nombre = row.get('nombre')
-            raw_cedula = row.get('cedula')
-            raw_marcacion = row.get('tipomarcacion')
-            raw_verif = row.get('verificacion')
-            
-            dept_name = str(raw_dept).strip().upper() if raw_dept is not None else "GENERAL"
-            excel_fullname = str(raw_nombre).strip().upper() if raw_nombre is not None else "DESCONOCIDO"
+        df_f['fecha'] = pd.to_datetime(df_f['fecha'])
+        df_f['hora'] = pd.to_datetime(df_f['hora'], format='%H:%M:%S')
 
-            excel_cedula = str(raw_cedula).replace('.0', '').strip() if raw_cedula is not None else None
-            if excel_cedula and excel_cedula.lower() in ['nan', 'none', '<na>', '']:
-                excel_cedula = None
+        df_f['hora_decimal'] = (
+            df_f['hora'].dt.hour +
+            df_f['hora'].dt.minute/60 +
+            df_f['hora'].dt.second/3600
+        )
 
-            # --- A. Gestión de Departamento ---
-            if dept_name not in dept_cache:
-                dept_id = _create_departamento(cursor, dept_name)
-                dept_cache[dept_name] = dept_id
-            else:
-                dept_id = dept_cache[dept_name]
+        # Aplicar K-means
+        # Se asegura de no extraer max() de una serie vacía
+        moda_serie = df_diario.loc[df_diario['funcionario'] == str(nombre_filtrado), 'numMarcacionesInicial'].mode()
+        if not moda_serie.empty:
+            n_clusters = int(moda_serie.max())
+        else:
+            n_clusters = 1 # Valor por defecto si no hay moda
 
-            # --- B. Gestión de Funcionario ---
-            funcionario_id = None
-            if excel_cedula and excel_cedula in func_by_cedula:
-                funcionario_id = func_by_cedula[excel_cedula]
-            elif excel_fullname in func_by_name:
-                funcionario_id = func_by_name[excel_fullname]
+        # Protección en caso de que los datos sean menores a los clusters
+        n_clusters = min(n_clusters, len(df_f))
+        if n_clusters == 0:
+            continue
 
-            # --- C. Creación de Funcionario ---
-            if not funcionario_id:
-                nombres, apellidos = _split_fullname(excel_fullname)
-                funcionario_id = _create_funcionario(cursor, dept_id, nombres, apellidos, excel_cedula)
-                if excel_cedula: 
-                    func_by_cedula[excel_cedula] = funcionario_id
-                func_by_name[excel_fullname] = funcionario_id
+        kmeans = KMeans(n_clusters=n_clusters, random_state=0)
+        df_f['cluster'] = kmeans.fit_predict(df_f[['hora_decimal']])
 
-            # --- D. Limpieza y formateo de Fecha, Hora y Marcación ---
-            marcacion_clean = str(raw_marcacion).strip().upper() if raw_marcacion is not None else ""
-            if marcacion_clean not in bandera_cache:
-                raise ValueError(f"Fila {index + 2}: La bandera '{marcacion_clean}' no existe en la BD.")
-            bandera_id = bandera_cache[marcacion_clean]
-            
-            raw_fecha = row.get('fecha')
-            if not raw_fecha or str(raw_fecha).lower() == 'nan':
-                raise ValueError(f"Fila {index + 2}: La fecha está vacía o es inválida.")
-            fecha_str = str(raw_fecha)
-                
-            raw_hora = row.get('hora')
-            hora_str = str(raw_hora).strip() if raw_hora is not None else '00:00:00'
-            # Asegurar que la hora tenga formato HH:MM:SS para comparar bien
-            if len(hora_str.split(':')) == 2:
-                hora_str += ":00"
-            # Rellena con 0 a la izquierda si la hora es de un solo dígito (ej: 8:00:00 -> 08:00:00)
-            hora_str = hora_str.zfill(8)
+        # Gráfica
+        plt.figure(figsize=(10, 6))
+        colors = plt.get_cmap('viridis')
 
-            # E. FILTRO ANTI-DUPLICADOS
-            # Creamos una llave única: "IDFuncionario_Fecha_Hora"
-            registro_key = f"{funcionario_id}_{fecha_str}_{hora_str}"
-            
-            if registro_key in registros_cache:
-                # Si ya existe en la base de datos o en una fila anterior, lo ignoramos
-                registros_omitidos += 1
-                continue
-            
-            # Si no existe, preparamos el método y lo insertamos
-            verif_str = str(raw_verif).strip().upper() if raw_verif is not None else ""
-            if 'FACE' in verif_str: metodo = 'FACE'
-            elif 'FING' in verif_str or 'FP' in verif_str: metodo = 'FP'
-            elif 'OMR' in verif_str: metodo = 'OMR'
-            else: metodo = 'MANUAL'
-            
-            _create_registro_actividad(cursor, funcionario_id, fecha_str, hora_str, bandera_id, metodo)
-            
-            # Lo agregamos al caché en memoria para bloquear filas clonadas en el mismo Excel
-            registros_cache.add(registro_key)
-            registros_insertados += 1
+        for cluster in range(n_clusters):
+            cluster_data = df_f[df_f['cluster'] == cluster]
+            plt.scatter(cluster_data['fecha'], cluster_data['hora_decimal'],
+                        color=colors(cluster / max(1, n_clusters - 1)), label=f'Cluster {cluster + 1}')
 
-        # 5. COMMIT
-        conn.commit()
-        logger.info(f"Importación completada. Insertados: {registros_insertados} | Omitidos por duplicidad: {registros_omitidos}")
-        
-        # Retornamos el diccionario para que el controlador web muestre los mensajes exactos
-        return {
-            "exito": True,
-            "insertados": registros_insertados,
-            "omitidos": registros_omitidos
-        }
+        centroids = kmeans.cluster_centers_
 
-    except Exception as e:
-        # 6. ROLLBACK
-        conn.rollback()
-        logger.error(f"Error crítico durante la importación. Rollback ejecutado. Detalles: {e}")
-        return {"exito": False, "error": str(e)}
-    
-    finally:
-        # 7. CERRAR RECURSOS
-        if cursor:
-            cursor.close()
-        if conn and conn.is_connected():
-            conn.close()
+        for centroid in centroids:
+            plt.axhline(y=centroid[0], color='red', linestyle='--', linewidth=1)
 
+        plt.xlabel("Fecha")
+        plt.ylabel("Hora del día (decimal)")
+        plt.title(f"Marcaciones de Horas - {nombre_filtrado}")
+        plt.xticks(rotation=45)
+        plt.ylim(0, 24)
+        plt.grid()
+        plt.legend()
 
-# FUNCIONES AUXILIARES (Consultas directas a la BD sistema_gestion_registros_db)
+        # Guardar a base64
+        buf = BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+        plt.close() # Cerrar la figura para liberar RAM del servidor
 
-def _load_registros_cache(cursor, fechas_excel):
-    if not fechas_excel:
-        return set()
-        
-    format_strings = ','.join(['%s'] * len(fechas_excel))
-    
-    # Extraemos directamente las columnas sin usar funciones de formato de MySQL
-    query = f"""
-        SELECT id_funcionario, fecha_registro, hora_registro 
-        FROM registros_actividad
-        WHERE fecha_registro IN ({format_strings})
-    """
-    
-    cursor.execute(query, tuple(fechas_excel))
-    
-    cache = set()
-    for r in cursor.fetchall():
-        fecha_str = r['fecha_registro'].strftime('%Y-%m-%d') if hasattr(r['fecha_registro'], 'strftime') else str(r['fecha_registro'])
-        
-        hora_str = str(r['hora_registro']).split('.')[0] 
-        if len(hora_str.split(':')) == 2:
-            hora_str += ":00"
-            
-        hora_str = hora_str.zfill(8)
-            
-        cache.add(f"{r['id_funcionario']}_{fecha_str}_{hora_str}")
-        
-    return cache
+        df_resumen.loc[df_resumen['funcionario'] == str(nombre_filtrado), 'grafica'] = image_base64
 
-def _load_departamentos_cache(cursor):
-    cursor.execute("SELECT id_departamento, nombre_departamento FROM departamentos")
-    return {r['nombre_departamento'].upper(): r['id_departamento'] for r in cursor.fetchall()}
+        df_etiquetado = etiquetar_clusters(n_clusters, centroids)
+        df_f['cluster'] = df_f['cluster'].map(df_etiquetado['marcacion'])
 
-def _load_banderas_cache(cursor):
-    cursor.execute("SELECT id_bandera, nombre_bandera FROM banderas_actividad")
-    return {r['nombre_bandera'].upper(): r['id_bandera'] for r in cursor.fetchall()}
+        # Actualizar el DataFrame principal
+        df.loc[df_f.index, 'marcacionCluster'] = df_f['cluster']
 
-def _load_funcionarios_cache(cursor):
-    cursor.execute("SELECT id_funcionario, nombres, apellidos, cedula FROM funcionarios")
-    rows = cursor.fetchall()
-    by_cedula = {r['cedula']: r['id_funcionario'] for r in rows if r['cedula']}
-    by_name = {f"{r['apellidos']} {r['nombres']}".upper(): r['id_funcionario'] for r in rows}
-    return by_cedula, by_name
-
-def _create_departamento(cursor, name):
-    sql = "INSERT INTO departamentos (nombre_departamento) VALUES (%s)"
-    cursor.execute(sql, (name,))
-    return cursor.lastrowid
-
-def _split_fullname(fullname):
-    parts = fullname.split()
-    if len(parts) >= 4:
-        apellidos = f"{parts[0]} {parts[1]}"
-        nombres = " ".join(parts[2:])
-    elif len(parts) == 3:
-        apellidos = f"{parts[0]} {parts[1]}"
-        nombres = parts[2]
-    else:
-        apellidos = parts[0] if len(parts) > 0 else "N/A"
-        nombres = " ".join(parts[1:]) if len(parts) > 1 else "N/A"
-    return nombres, apellidos
-
-def _create_funcionario(cursor, dept_id, nombres, apellidos, cedula):
-    sql = """
-        INSERT INTO funcionarios (id_departamento, nombres, apellidos, cedula) 
-        VALUES (%s, %s, %s, %s)
-    """
-    cursor.execute(sql, (dept_id, nombres, apellidos, cedula))
-    return cursor.lastrowid
-
-def _create_registro_actividad(cursor, func_id, fecha, hora, bandera_id, metodo):
-    sql = """
-        INSERT INTO registros_actividad (id_funcionario, fecha_registro, hora_registro, id_bandera, metodo_registro) 
-        VALUES (%s, %s, %s, %s, %s)
-    """
-    cursor.execute(sql, (func_id, fecha, hora, bandera_id, metodo))
+    # Para no perder el trabajo de resumen y diario, aunque el parquet principal es df, 
+    # retornamos todo. El controlador decidirá qué guardar.
+    return df, df_resumen, df_diario

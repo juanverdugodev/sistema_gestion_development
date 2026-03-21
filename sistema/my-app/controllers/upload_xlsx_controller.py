@@ -15,49 +15,35 @@ def process_upload_xlsx_controller():
     Paso 1: Sube el archivo, lo guarda como temporal, lee con Pandas
     para validar que tenga las columnas correctas y cuenta las filas para el resumen.
     """
-    # verifica que el archivo de la petición HTTP llegue desde al frontend
     if 'file' not in request.files:
         return jsonify({"error": "No se encontró ningún archivo en la petición"}), 400
 
     file = request.files['file']
 
-    # validar que el file realmente exista
     if file.filename == '':
         return jsonify({"error": "No se seleccionó ningún archivo"}), 400
 
-    # verifica la extensión y archivo
     if file and file.filename.lower().endswith('.xlsx'):
         try:
-            # Validar perfil administrativo
             rol_actual = session.get('rol_id')
             if rol_actual != 1:
                 return jsonify({"error": "Acceso denegado. Solo el perfil administrativo puede cargar registros."}), 403
 
-            # Guardar temporalmente el archivo
             temp_folder = get_temp_uploads_storage()
             extension = os.path.splitext(file.filename)[1]
             temp_filename = f"temp_xlsx_{uuid.uuid4().hex}{extension}"
             temp_filepath = os.path.join(temp_folder, temp_filename)
             file.save(temp_filepath)
 
-            # Validación rápida con Pandas
+            # Lectura básica solo para mostrar números en la pantalla de carga
             df = pd.read_excel(temp_filepath)
 
-            # Renombre de columnas para la validación
-            df = df.rename(columns={
-                'Dpto.': 'departamento',
-                'Nombre': 'nombre'
-            })
-
             total_filas = len(df)
+            
+            # Se usan los nombres originales del Excel porque aún no pasa por el engine
+            total_personal = df['Nombre'].astype(str).nunique() if 'Nombre' in df.columns else 0
+            total_dept = df['Dpto.'].nunique() if 'Dpto.' in df.columns else 0
 
-            # Conteo de personal único (forzando a string para evitar errores con números/códigos)
-            total_personal = df['nombre'].astype(str).nunique() if 'nombre' in df.columns else 0
-
-            # función Number of Unique (nunique()) para conteo (len()) dentro de pandas, solo si existe la col departamento
-            total_dept = df['departamento'].nunique() if 'departamento' in df.columns else 0
-
-            # Retornamos el nombre del archivo temporal al frontend
             return jsonify({
                 "mensaje": "Archivo leído y validado correctamente.",
                 "archivo_temp": temp_filename,
@@ -89,7 +75,7 @@ def cancel_upload_xlsx_controller():
 
 def confirm_upload_xlsx_controller():
     """
-    Paso 2: Toma el archivo temporal, aplica las transformaciones finales,
+    Paso 2: Toma el archivo temporal, aplica las transformaciones de data science,
     lo convierte a .parquet y elimina el temporal.
     """
     datos_req = request.get_json()
@@ -104,63 +90,52 @@ def confirm_upload_xlsx_controller():
         return jsonify({"error": "El archivo temporal ya no existe o caducó. Vuelva a subirlo."}), 400
 
     try:
-        # 1. leer el archivo temporal nuevamente
-        df = pd.read_excel(temp_filepath)
+        # 1. Leer crudo
+        df_raw = pd.read_excel(temp_filepath)
 
-        # 2. filtrado
-        df = df.rename(columns={
-            'Dpto.': 'departamento',
-            'Nombre': 'nombre',
-            'AC_No': 'numAcceso',
-            'Fecha/Hora': 'fecha_hora',
-            'Marc-Ent/Sal': 'tipoMarcacion',
-            'Reloj ID': 'relojID',
-            'No. Cédula': 'cedula',
-            'Incidencia': 'incidencia',
-            'Verificación': 'verificacion',
-            'CardNo': 'numTarjeta'
-        })
+        # 2. Pasar al motor (El motor hace el renombre y los cálculos del Notebook)
+        df, df_resumen, df_diario = clusterizar(df_raw)
 
-        if 'verificacion' in df.columns:
-            df['verificacion'] = df['verificacion'].str.upper()
-
-        df = df.drop(columns=['relojID', 'incidencia', 'numTarjeta'], errors='ignore')
-
-        # Conversión de fechas
-        df['fecha_hora'] = pd.to_datetime(df['fecha_hora'], format='%d/%m/%Y %H:%M:%S')
-        df['fecha'] = df['fecha_hora'].dt.date
-        df['hora'] = df['fecha_hora'].dt.time
-
-        # 3. cluster y validaciones
-        total_personal = total_personal = df['nombre'].astype(str).nunique() if 'nombre' in df.columns else 0
-
-        df = clusterizar(df)  # función para cluster
-
+        # 3. Datos finales post-procesamiento
+        total_personal = df['nombre'].astype(str).nunique() if 'nombre' in df.columns else 0
         total_marcaciones = df['tipoMarcacion'].astype(str).nunique() if 'tipoMarcacion' in df.columns else 0
 
-        # 4. Generar nombre y guardar el .parquet
-        year = str(df['fecha_hora'].dt.year.unique()[0])
-        mes = str(df['fecha_hora'].dt.month.unique()[0]).zfill(2)  # zfill para agregar 0 en casos como 09-
-        archivo_parquet = f"{mes}-{year}.parquet"
+        # 4. Generar subcarpeta y guardar los 3 Parquets
+        year = str(df['fecha_hora'].dt.year.dropna().unique()[0])
+        mes = str(df['fecha_hora'].dt.month.dropna().unique()[0]).zfill(2)
+        
+        # Nombre de la nueva subcarpeta (Ej: "03-2026")
+        nombre_subcarpeta = f"{mes}-{year}"
+        base_folder = get_uploads_storage_parquet()
+        
+        # Ruta completa de la subcarpeta
+        specific_folder = os.path.join(base_folder, nombre_subcarpeta)
+        
+        # Crear la subcarpeta si no existe (exist_ok=True evita errores si ya existe)
+        os.makedirs(specific_folder, exist_ok=True)
 
-        folder = get_uploads_storage_parquet()
-        filepath = os.path.join(folder, archivo_parquet)
+        # Definir los nombres de los 3 archivos
+        archivo_principal = f"{mes}-{year}.parquet"
+        archivo_resumen = f"resumen-{mes}-{year}.parquet"
+        archivo_diario = f"diario-{mes}-{year}.parquet"
 
-        df.to_parquet(filepath, engine='pyarrow', compression='snappy')
+        # Guardar los 3 DataFrames dentro de la subcarpeta específica
+        df.to_parquet(os.path.join(specific_folder, archivo_principal), engine='pyarrow', compression='snappy')
+        df_resumen.to_parquet(os.path.join(specific_folder, archivo_resumen), engine='pyarrow', compression='snappy')
+        df_diario.to_parquet(os.path.join(specific_folder, archivo_diario), engine='pyarrow', compression='snappy')
 
-        # 5. Eliminar el archivo temporal (.xlsx)
+        # 5. Limpieza
         if os.path.exists(temp_filepath):
             os.remove(temp_filepath)
 
-        # 6. Responder al frontend
+        # 6. Respuesta
         if total_personal > 0:
-            total_registros_guardados = len(df)
             return jsonify({
-                "mensaje": f"Se guardaron {total_registros_guardados} registros correspondientes a {total_marcaciones} tipos de marcaciones.",
+                "mensaje": f"Se procesaron {len(df)} registros correspondientes a {total_marcaciones} tipos de marcaciones.",
                 "tipo": "success"
             }), 200
         else:
-            return jsonify({"error": "Error: Los datos no fueron cargados correctamente."}), 500
+            return jsonify({"error": "Error: Los datos no fueron cargados correctamente tras el análisis."}), 500
 
     except Exception as e:
-        return jsonify({"error": f"Error crítico en la confirmación: {str(e)}"}), 500
+        return jsonify({"error": f"Error crítico en la confirmación o procesamiento matemático: {str(e)}"}), 500

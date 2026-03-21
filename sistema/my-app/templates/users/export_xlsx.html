@@ -1,0 +1,207 @@
+{% extends "base/base.html" %}
+
+{% block content %}
+<div x-data="exportadorExcel()" class="bg-white py-5 px-6 rounded-2xl shadow-lg border border-gray-300 flex flex-col gap-4 h-[calc(100vh-110px)] overflow-hidden relative">
+    
+    <div class="flex flex-shrink-0 items-start md:items-center border-b border-gray-100 pb-4 gap-4">
+        <a href="{{ url_for('main.admin_user_records') }}" class="text-brand-blue hover:text-blue-700 transition-colors bg-blue-50 p-3 rounded-full hover:bg-blue-100 flex-shrink-0 mt-1 md:mt-0">
+            <i class="fas fa-arrow-left text-xl"></i>
+        </a>
+        <div class="flex flex-col md:flex-row justify-start items-start md:items-center gap-3 md:gap-6 w-full">
+            <h2 class="text-2xl font-bold text-slate-800">Exportar Registros de Asistencia</h2>
+            <div class="hidden md:block w-1 h-8 bg-brand-blue rounded-full"></div>
+            <div class="md:hidden w-full h-1 bg-brand-blue rounded-full my-1"></div>
+            <p class="text-gray-700 text-lg font-semibold">Genera un Excel con la información consolidada del mes.</p>
+        </div>
+    </div>
+    
+    <div class="flex-1 flex flex-col lg:flex-row gap-6 mt-2 items-stretch overflow-hidden">
+        
+        <div class="w-full lg:w-1/3 flex flex-col h-full overflow-y-auto custom-scrollbar pr-2">
+            <div class="bg-blue-50 border-l-4 border-brand-blue rounded-xl p-6 shadow-md flex-1 flex flex-col justify-center">
+                <div class="flex items-center text-brand-blue mb-4">
+                    <i class="fas fa-info-circle text-2xl mr-3"></i>
+                    <h3 class="text-xl font-bold">Instrucciones</h3>
+                </div>
+                
+                <ul class="text-slate-700 space-y-4 font-medium">
+                    <li class="flex items-start">
+                        <i class="fas fa-calendar-alt text-brand-blue mt-1 mr-3"></i>
+                        <span>Selecciona el Mes y el Año del cual deseas obtener los registros.</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-database text-gray-500 mt-1 mr-3"></i>
+                        <span>El sistema buscará en la base de datos segura y transformará los registros al formato estructurado.</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-file-excel text-green-600 mt-1 mr-3"></i>
+                        <span>Se descargará un archivo <span class="font-bold">.xlsx</span> con todas las columnas intactas y listas para análisis.</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="w-full lg:w-2/3 border-2 border-brand-blue/30 rounded-xl bg-gray-50 p-6 md:p-8 shadow-inner flex flex-col items-center justify-center flex-1 h-full">
+            
+            <div class="mb-6 text-gray-400 opacity-80 flex items-center justify-center w-20 h-20">
+                <span class="fa-stack fa-4x">
+                  <i class="fas fa-file-excel fa-stack-1x text-green-500"></i>
+                </span>
+            </div>
+
+            <h3 class="text-2xl font-bold text-slate-700 mb-6 text-center">Selecciona el periodo a exportar</h3>
+            
+            <div class="flex flex-col sm:flex-row gap-4 w-full max-w-md mb-6">
+                <div class="relative w-full sm:w-1/2">
+                    <select x-model="mesTemp" @change="actualizarMesAnio()" 
+                            class="w-full pl-4 pr-8 py-3 border-2 border-gray-300 rounded-xl text-slate-700 font-bold focus:outline-none focus:border-brand-blue transition-colors appearance-none cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                            {% if not meses_disponibles %} disabled {% endif %}>
+                        {% if not meses_disponibles %}
+                            <option value="" disabled selected>Sin registros</option>
+                        {% else %}
+                            <option value="" disabled selected>Mes</option>
+                            {% for mes in meses_disponibles %}
+                                <option value="{{ mes.num }}">{{ mes.nombre }}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <i class="fas fa-chevron-down text-gray-400"></i>
+                    </div>
+                </div>
+
+                <div class="relative w-full sm:w-1/2">
+                    <select x-model="anioTemp" @change="actualizarMesAnio()"
+                            class="w-full pl-4 pr-8 py-3 border-2 border-gray-300 rounded-xl text-slate-700 font-bold focus:outline-none focus:border-brand-blue transition-colors appearance-none cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                            {% if not anios_disponibles %} disabled {% endif %}>
+                        {% if not anios_disponibles %}
+                            <option value="" disabled selected>Sin registros</option>
+                        {% else %}
+                            <option value="" disabled selected>Año</option>
+                            {% for anio in anios_disponibles %}
+                                <option value="{{ anio }}">{{ anio }}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <i class="fas fa-chevron-down text-gray-400"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full max-w-md h-14 flex-shrink-0">
+                <template x-if="urlDescarga !== ''">
+                    <button type="button" @click="descargarExcel()" 
+                       class="w-full h-full bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3 font-bold text-lg cursor-pointer transform hover:-translate-y-1">
+                        <i class="fas fa-file-export"></i> Descargar Excel Generado
+                    </button>
+                </template>
+                <template x-if="urlDescarga === ''">
+                    <button disabled class="w-full h-full bg-gray-300 text-gray-500 rounded-xl font-bold text-lg cursor-not-allowed flex items-center justify-center gap-3 border-2 border-gray-200">
+                        <i class="fas fa-lock"></i> Selecciona un periodo válido
+                    </button>
+                </template>
+            </div>
+            
+        </div>
+        
+    </div>
+
+    <template x-teleport="body">
+        <div x-data="{ isLoading: false, loadingMessage: 'Procesando...' }"
+             @show-loading.window="isLoading = true; loadingMessage = $event.detail.message || 'Procesando...'"
+             @hide-loading.window="isLoading = false"
+             x-show="isLoading"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 z-[999999] bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-auto"
+             style="display: none;">
+            
+            <div class="relative w-24 h-24 mb-6">
+                <div class="absolute inset-0 border-8 border-slate-700 border-t-brand-blue rounded-full animate-spin"></div>
+                <div class="absolute inset-0 flex items-center justify-center text-white">
+                    <i class="fas fa-microchip text-3xl animate-pulse text-brand-blue text-blue-200"></i>
+                </div>
+            </div>
+            
+            <h2 class="text-3xl font-black text-white tracking-wide text-center" x-text="loadingMessage"></h2>
+            <p class="text-white mt-3 font-bold">Por favor, no cierres esta ventana</p>
+        </div>
+    </template>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('exportadorExcel', () => ({
+            mesTemp: '',
+            anioTemp: '',
+            mesCompleto: '',
+            urlDescarga: '',
+            
+            actualizarMesAnio() {
+                if(this.mesTemp && this.anioTemp) {
+                    this.mesCompleto = this.anioTemp + '-' + this.mesTemp;
+                    this.urlDescarga = `/api/records/download-xlsx?mes=${this.mesCompleto}`;
+                } else {
+                    this.mesCompleto = '';
+                    this.urlDescarga = '';
+                }
+            },
+
+            descargarExcel() {
+                if (!this.urlDescarga) return;
+
+                // Enciende el loading global
+                window.dispatchEvent(new CustomEvent('show-loading', { 
+                    detail: { message: 'Exportando datos a Excel...' } 
+                }));
+
+                fetch(this.urlDescarga)
+                    .then(response => {
+                        if (!response.ok) throw new Error("Error en el servidor al generar el archivo.");
+                        return response.blob(); 
+                    })
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        
+                        // Cambio clave 4: Método a prueba de fallos para obtener el nombre del mes sin consultar el DOM
+                        const nombresMeses = {
+                            "01": "ENERO", "02": "FEBRERO", "03": "MARZO", "04": "ABRIL",
+                            "05": "MAYO", "06": "JUNIO", "07": "JULIO", "08": "AGOSTO",
+                            "09": "SEPTIEMBRE", "10": "OCTUBRE", "11": "NOVIEMBRE", "12": "DICIEMBRE"
+                        };
+                        let nombreMes = nombresMeses[this.mesTemp] || "MES";
+                        
+                        a.download = `REGISTROS-ASISTENCIA-${nombreMes}-${this.anioTemp}.xlsx`;
+                        
+                        document.body.appendChild(a);
+                        a.click(); 
+                        
+                        window.URL.revokeObjectURL(url);
+                        a.remove();
+                    })
+                    .catch(error => {
+                        console.error("Error crítico en la descarga:", error);
+                        window.dispatchEvent(new CustomEvent('notify', { 
+                            detail: { message: 'Ocurrió un error al exportar el archivo.', type: 'error' } 
+                        }));
+                    })
+                    .finally(() => {
+                        // Apaga el loading global sin importar si fue éxito o error
+                        window.dispatchEvent(new CustomEvent('hide-loading'));
+                    });
+            }
+        }));
+    });
+</script>
+{% endblock %}

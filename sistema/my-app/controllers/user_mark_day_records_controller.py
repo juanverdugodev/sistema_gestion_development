@@ -6,6 +6,7 @@ import os
 import pandas as pd
 import uuid
 import re
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +20,14 @@ def obtener_filtros_disponibles():
     meses_num = set()
     
     if os.path.exists(folder):
-        for filename in os.listdir(folder):
-            # Regex atrapa el mes (grupo 1) y el año (grupo 2) -> Ej: 09-2024
-            match = re.match(r"(\d{2})-(\d{4})\.parquet", filename)
-            if match:
-                meses_num.add(match.group(1))
-                anios.add(match.group(2))
+        for item in os.listdir(folder):
+            item_path = os.path.join(folder, item)
+            # Verificamos que sea una carpeta y que su nombre coincida con MM-YYYY
+            if os.path.isdir(item_path):
+                match = re.match(r"(\d{2})-(\d{4})", item)
+                if match:
+                    meses_num.add(match.group(1))
+                    anios.add(match.group(2))
                 
     # Traductor de meses para el HTML
     nombres_meses = {
@@ -50,7 +53,8 @@ def obtener_nombres_parquet():
 
     try:
         anio, mes = mes_req.split('-')
-        ruta_archivo = os.path.join(get_uploads_storage_parquet(), f"{mes}-{anio}.parquet")
+        nombre_carpeta_y_archivo = f"{mes}-{anio}"
+        ruta_archivo = os.path.join(get_uploads_storage_parquet(), nombre_carpeta_y_archivo, f"{nombre_carpeta_y_archivo}.parquet")
 
         if not os.path.exists(ruta_archivo):
             return jsonify({"exists": False, "names": []}), 200
@@ -72,6 +76,10 @@ def obtener_nombres_parquet():
 def validar_marcaciones():
     """Dibuja la pantalla y procesa las marcaciones si se envían filtros."""
     
+    # Capturar mensaje de éxito tras recargar
+    if request.args.get('success') == 'true':
+        flash("Las marcaciones han sido actualizadas y validadas correctamente en el registro.", "success")
+
     # --- PASO 1: Seguridad y Captura de Parámetros ---
     if session.get('rol') != 'Administrador':
         flash("Acceso denegado.", "error")
@@ -98,7 +106,8 @@ def validar_marcaciones():
     if mes_req:
         try:
             anio, mes = mes_req.split('-')
-            ruta_archivo = os.path.join(get_uploads_storage_parquet(), f"{mes}-{anio}.parquet")
+            nombre_carpeta_y_archivo = f"{mes}-{anio}"
+            ruta_archivo = os.path.join(get_uploads_storage_parquet(), nombre_carpeta_y_archivo, f"{nombre_carpeta_y_archivo}.parquet")
 
             if not os.path.exists(ruta_archivo):
                 flash(f"No existen registros para {mes}-{anio}.", "error")
@@ -114,7 +123,7 @@ def validar_marcaciones():
                 else:
                     # Ordenar fechas cronológicamente
                     df_emp['fecha_hora'] = pd.to_datetime(df_emp['fecha_hora'])
-                    df_emp = df_emp.sort_values(by='fecha_hora')
+                    df_emp = df_emp.sort_values(by=['fecha', 'hora'])
 
                     # --- PASO 5: Extraer Perfil del Usuario ---
                     info_base = df_emp.iloc[0]
@@ -139,10 +148,22 @@ def validar_marcaciones():
                     # Iteramos sobre cada fila del DataFrame del empleado (SIN MODIFICAR EL DF)
                     for _, fila_marca in df_emp.iterrows():
                         if pd.notna(fila_marca['fecha_hora']):
-                            # Extraemos componentes de la fecha
+                            
+                            # --- MODIFICACIÓN: Extracción de hora para visualización y ancla exacta ---
                             fecha_limpia = fila_marca['fecha_hora'].date()          # Ej: datetime.date(2026, 3, 5)
                             fecha_texto = fecha_limpia.strftime('%Y-%m-%d')         # Ej: '2026-03-05'
-                            hora_texto = fila_marca['fecha_hora'].strftime('%H:%M') # Ej: '08:30'
+
+                            # --- CORRECCIÓN: LEER LA COLUMNA EDITABLE 'hora' ---
+                            # Tomamos la hora de la columna que SÍ se actualiza
+                            hora_obj = fila_marca['hora']
+
+                            # Prevenimos errores de tipo de dato (si Pandas devuelve un objeto time o un string)
+                            if hasattr(hora_obj, 'strftime'):
+                                hora_texto = hora_obj.strftime('%H:%M')     # Ej: '18:00' (Lo que ve el usuario)
+                                hora_exacta = hora_obj.strftime('%H:%M:%S') # Ej: '18:00:00' (Ancla de búsqueda)
+                            else:
+                                hora_texto = str(hora_obj)[:5]              # Ej: '18:00'
+                                hora_exacta = str(hora_obj)[:8]             # Ej: '18:00:00'
 
                             # Si el día aún no existe en nuestro calendario, lo creamos
                             if fecha_texto not in calendario_mes:
@@ -156,16 +177,44 @@ def validar_marcaciones():
                             
                             # Extraemos información específica de esta fila/marca
                             metodo_ingreso = fila_marca.get('verificacion', 'SISTEMA')
-                            tipo_evento = fila_marca.get('tipoMarcacion', fila_marca.get('tipoMarcacion', 'Registro'))
-                            
+
+                            # --- CONDICIONAL DE JERARQUÍA DE MARCAS ---
+                            m_real = fila_marca.get('marcacionReal')
+                            m_cluster = fila_marca.get('marcacionCluster')
+
+                            # 1. Si existe corrección humana en marcacionReal, tiene prioridad.
+                            if pd.notna(m_real) and str(m_real).strip() and str(m_real).strip() != 'nan':
+                                tipo_evento = str(m_real).strip()
+                            # 2. Si no, usamos el cálculo de la máquina del cluster.
+                            elif pd.notna(m_cluster) and str(m_cluster).strip() and str(m_cluster).strip() != 'nan':
+                                tipo_evento = str(m_cluster).strip()
+                            # 3. Si todo falla, usamos el dato crudo sin cluster.
+                            else:
+                                tipo_evento = fila_marca.get('tipoMarcacion', 'Registro')
+
+                            # Guardamos el cluster original intacto para no perderlo al guardar
+                            cluster_puro = m_cluster if pd.notna(m_cluster) else np.nan
+
+                            # --- LECTURA DE VALIDACIÓN ---
+                            estado_guardado = fila_marca.get('tipoValidacion')
+                            if pd.isna(estado_guardado) or not str(estado_guardado).strip() or str(estado_guardado).strip() == 'nan':
+                                estado_final = 'Por Validar'
+                            else:
+                                estado_final = str(estado_guardado).strip()
+
                             # Construimos el diccionario de la marca individual
+
+                            # --- MODIFICACIÓN: Inclusión de ancla temporal exacta ---
                             marca_individual = {
-                                'id_registro': uuid.uuid4().hex[:8], # ID temporal para el frontend
+                                'id_registro': uuid.uuid4().hex[:8],
                                 'hora': hora_texto,
-                                'tipo': tipo_evento,
-                                'estado': 'Por Validar', # Estado por defecto al leer el parquet
-                                'metodo': metodo_ingreso
+                                'hora_original': hora_exacta, # Se preservan los segundos para búsqueda
+                                'tipo': tipo_evento,    
+                                'estado': estado_final, 
+                                'metodo': metodo_ingreso,
+                                'cluster_original': cluster_puro 
                             }
+                            # -------------------------------------------------------
 
                             # Guardamos la marca en la lista de ese día
                             calendario_mes[fecha_texto]['marcaciones'].append(marca_individual)
@@ -178,15 +227,15 @@ def validar_marcaciones():
                         lista_marcas_activas = [m for m in info_dia['marcaciones'] if m['estado'] != 'Descartado']
                         total_marcas = len(lista_marcas_activas)
                         
-                        # REGLA: 4 o 6 marcas activas Y SIN DUPLICADOS = "Por Validar". 
+                        # REGLA: módulo de 2, marcas activas Y SIN DUPLICADOS = "Por Validar". 
                         # Cualquier otra cosa (número distinto o tipos repetidos) = "Inconsistente".
                         if total_marcas > 0:
                             # Detectar si hay duplicados
                             tipos_activos = [m['tipo'] for m in lista_marcas_activas]
                             tiene_duplicados = len(tipos_activos) != len(set(tipos_activos))
 
-                            # REGLA: 4 o 6 marcas Y SIN DUPLICADOS = Por Validar
-                            if (total_marcas == 4 or total_marcas == 6) and not tiene_duplicados:
+                            # REGLA: Cantidad par de marcas (módulo 2 == 0) Y SIN DUPLICADOS = Por Validar
+                            if (total_marcas % 2 == 0) and not tiene_duplicados:
                                 info_dia['estados_dia'].add('Por Validar')
                             else:
                                 info_dia['estados_dia'].add('Inconsistente')
@@ -236,7 +285,114 @@ def validar_marcaciones():
         mes_seleccionado=mes_req,    # Para que Flatpickr muestre el mes actual
         usuario=datos_usuario,       # Para la tarjeta de perfil
         semanas=semanas_finales,     # Para las tablas desplegables
-        datos_js=marcas_json,         # Para que funcione el modal de edición
+        datos_js=marcas_json,        # Para que funcione el modal de edición
         anios_disponibles=lista_anios,   # <-- La lista de años desplegable
         meses_disponibles=lista_meses    # <-- La lista de meses desplegable
     )
+
+def guardar_edicion_jornada_api():
+    """Recibe las ediciones del frontend y actualiza el archivo .parquet modificando SOLO las columnas permitidas."""
+    if session.get('rol') != 'Administrador':
+        return jsonify({"success": False, "error": "Acceso denegado"}), 403
+
+    datos = request.get_json()
+    nombre_funcionario = datos.get('id_funcionario')
+    mes_completo = datos.get('mes_completo')
+    fechas_modificadas = datos.get('fechas_modificadas')
+
+    if not all([nombre_funcionario, mes_completo, fechas_modificadas]):
+        return jsonify({"success": False, "error": "Datos incompletos"}), 400
+
+    try:
+        # 1. Localizar el archivo parquet correcto
+        anio, mes = mes_completo.split('-')
+        nombre_carpeta = f"{mes}-{anio}"
+        ruta_archivo = os.path.join(get_uploads_storage_parquet(), nombre_carpeta, f"{nombre_carpeta}.parquet")
+
+        if not os.path.exists(ruta_archivo):
+            return jsonify({"success": False, "error": "El archivo de este mes ya no existe."}), 404
+
+        # 2. Leer el DataFrame original
+        df = pd.read_parquet(ruta_archivo)
+
+        # 3. Extraer la data base del empleado (departamento, cédula, etc.) para las inserciones manuales
+        df_empleado = df[df['nombre'] == nombre_funcionario]
+        if df_empleado.empty:
+            return jsonify({"success": False, "error": "El empleado no existe en el archivo."}), 404
+
+        # Extraemos un registro "modelo" por si el admin creó una marca nueva manual
+        fila_modelo = df_empleado.iloc[0].copy()
+        
+        nuevas_filas_manuales = []
+
+        # 4. Procesar cada día modificado
+        for fecha_str, marcas_js in fechas_modificadas.items():
+            fecha_obj = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+            
+            for m in marcas_js:
+                hora_actual = m['hora']
+                hora_original = m.get('hora_original') # Si es un registro nuevo desde el modal, será None
+                estado = m['estado']
+                tipo_real = m['tipo']
+
+                # --- CASO A: ES UN REGISTRO NUEVO CREADO MANUALMENTE EN EL FRONTEND ---
+                if not hora_original:
+                    nueva_fila = fila_modelo.copy()
+                    
+                    # Como es un registro inventado, SÍ definimos fecha_hora, fecha y hora
+                    fecha_hora_obj = pd.to_datetime(f"{fecha_str} {hora_actual}:00")
+                    nueva_fila['fecha_hora'] = fecha_hora_obj
+                    nueva_fila['tipoMarcacion'] = np.nan     # Nulo porque no se generó en método físico
+                    nueva_fila['verificacion'] = m['metodo'] # 'MANUAL desde el JSON'
+                    nueva_fila['fecha'] = fecha_obj
+                    nueva_fila['hora'] = fecha_hora_obj.time()
+
+                    nueva_fila['marcacionCluster'] = np.nan # Nulo porque la máquina nunca lo calculó
+                    nueva_fila['marcacionReal'] = tipo_real # SÍ lleva el dato porque es una inserción humana
+                    nueva_fila['tipoValidacion'] = estado
+                    
+                    nuevas_filas_manuales.append(nueva_fila.to_dict())
+                
+                # --- MODIFICACIÓN: Lógica de actualización in-place con precisión de segundos ---
+                else:
+                    # Buscamos la fila exacta usando la hora_original (con sus segundos) como ancla
+                    hora_orig_obj = pd.to_datetime(f"{fecha_str} {hora_original}").time()
+                    mask_exacta = (df['nombre'] == nombre_funcionario) & (df['fecha'] == fecha_obj) & (df['hora'] == hora_orig_obj)
+                    
+                    if df[mask_exacta].shape[0] > 0:
+                        # 1. Si la hora fue modificada en el frontend (Comparación de HH:MM)
+                        if hora_actual != hora_original[:5]:
+                            nueva_hora_obj = pd.to_datetime(f"{fecha_str} {hora_actual}:00").time()
+                            # Actualización de la columna hora
+                            df.loc[mask_exacta, 'hora'] = nueva_hora_obj
+                        
+                        # 2. Actualización de metadatos de revisión
+                        df.loc[mask_exacta, 'marcacionReal'] = tipo_real
+                        df.loc[mask_exacta, 'tipoValidacion'] = estado
+                # --------------------------------------------------------------------------------
+
+        # 5. Inyectar las nuevas filas manuales (si las hubo)
+        if nuevas_filas_manuales:
+            df_nuevas = pd.DataFrame(nuevas_filas_manuales)
+            
+            # Aseguramos compatibilidad de tipos con pyarrow
+            df_nuevas['marcacionCluster'] = df_nuevas['marcacionCluster'].astype('object')
+            df_nuevas['marcacionReal'] = df_nuevas['marcacionReal'].astype('object')
+            df_nuevas['tipoValidacion'] = df_nuevas['tipoValidacion'].astype('object')
+
+            # Aseguramos también la columna tipoMarcacion por los nulos
+            df_nuevas['tipoMarcacion'] = df_nuevas['tipoMarcacion'].astype('object')
+            
+            df = pd.concat([df, df_nuevas], ignore_index=True)
+
+        # 6. Ordenar el DataFrame general para mantener la coherencia cronológica
+        df = df.sort_values(by=['nombre', 'fecha_hora']).reset_index(drop=True)
+
+        # 7. Sobrescribir el Parquet Original de manera segura
+        df.to_parquet(ruta_archivo, engine='pyarrow', compression='snappy')
+
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        logger.error(f"Error al sobrescribir parquet in-place: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

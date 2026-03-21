@@ -47,6 +47,13 @@
                       {% if request.endpoint == 'main.upload_xlsx_view' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
                 <i class="fa-solid fa-database w-6 text-brand-blue"></i> Cargar registros
             </a>
+
+            <a href="{{ url_for('main.export_xlsx_view') }}"
+               draggable="false"
+               class="flex items-center py-3 px-4 rounded-xl transition-all duration-200 text-sm
+                      {% if request.endpoint == 'main.export_xlsx_view' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
+                <i class="fa-solid fa-file-excel w-6 text-brand-blue"></i> Exportar registros
+            </a>
             
         {% endif %}
 

@@ -89,14 +89,27 @@ document.addEventListener('alpine:init', () => {
         // Rastrea qué días específicos han sido alterados en el frontend
         fechasModificadas: [],
         hayCambiosGuardados: false, // Activa el botón verde grande de "Aplicar Cambios"
+        isSaving: false, // Controla la pantalla de carga al aplicar cambios
 
         // --- VARIABLES VISUALES DEL MODAL ---
         modalAbierto: false,
         modalFecha: '', // Ej: '2026-03-15'
         modalFechaDisplay: '', // Ej: 'LUNES, 2026-03-15' (Para mostrar al usuario)
         modalMarcaciones: [], // Copia de trabajo de las marcas del día actual
+        registrosConError: [],
 
         datosUsuario: null,
+
+        // --- FUNCIÓN: Dispara el parpadeo rojo MODAL ---
+        marcarErroresVisuales(idsRegistros, mensaje) {
+            this.registrosConError = idsRegistros;
+            this.notificar(mensaje, "error");
+            
+            // Quita el parpadeo rojo después de 5.5 segundos
+            setTimeout(() => {
+                this.registrosConError = [];
+            }, 5500);
+        },
 
         // Disparador de Alertas visuales
         notificar(mensaje, tipo = 'info') {
@@ -112,16 +125,34 @@ document.addEventListener('alpine:init', () => {
             this.todosLosRegistros = JSON.parse(JSON.stringify(datosIniciales || {}));
             this.datosUsuario = datosUsuarioRecibidos;
 
-
             // datos del los registros (JSON)
             
             console.log("Datos del Funcionario:", this.datosUsuario);
             console.log("Estructura del JSON cargado:", this.todosLosRegistros);
 
-            
             // Escanear la data que llega al inicio desde el backend para pintar las inconsistencias individuales
             this.marcarDuplicadosIniciales();
             
+            // --- NUEVO: LEER ESTADOS REALES  ---
+            // Leemos la columna 'tipoValidacion' que Python metió en cada 'marca.estado'
+            for (let fecha in this.todosLosRegistros) {
+                let marcasDelDia = this.todosLosRegistros[fecha];
+                
+                // La BD nos dice que este día ya fue validado o actualizado en el pasado
+                let tieneActualizado = marcasDelDia.some(m => m.estado === 'Actualizado');
+                let tieneValido = marcasDelDia.some(m => m.estado === 'Válido');
+                
+                // 1. Si vino como Actualizado, lo metemos a la memoria de modificaciones
+                if (tieneActualizado && !this.fechasModificadas.includes(fecha)) {
+                    this.fechasModificadas.push(fecha);
+                }
+                
+                // 2. Si vino como Válido o Actualizado, CERRAMOS EL CANDADO (lo confirmamos visualmente)
+                if ((tieneValido || tieneActualizado) && !this.fechasConfirmadas.includes(fecha)) {
+                    this.fechasConfirmadas.push(fecha);
+                }
+            }
+
             // Escuchamos cuando el usuario hace click en el lápiz de cualquier tabla
             this.$el.addEventListener('abrir-modal', (e) => {
                 this.abrirModalEdicion(e.detail.fecha, e.detail.dia);
@@ -145,8 +176,8 @@ document.addEventListener('alpine:init', () => {
                     conteosHoras[m.hora] = (conteosHoras[m.hora] || 0) + 1;
                 });
                 
-                // Evaluamos si el dia tiene una cantidad incorrecta de marcas (que no sea ni 4 ni 6)
-                let cantidadInvalida = (marcasActivas.length > 0 && marcasActivas.length !== 4 && marcasActivas.length !== 6);
+                // Evaluamos si el dia tiene una cantidad impar de marcas
+                let cantidadInvalida = (marcasActivas.length > 0 && marcasActivas.length % 2 !== 0);
                 
                 // Si encontramos un repetido o la cantidad del dia es invalida, marcamos todo como 'Inconsistente'
                 this.todosLosRegistros[fecha].forEach(m => {
@@ -166,21 +197,19 @@ document.addEventListener('alpine:init', () => {
         },
 
         obtenerEstadosDia(fecha) {
-            // Ya usamos obtenerMarcasActivas, así que los "Descartados" están ignorados mágicamente
             let marcas = this.obtenerMarcasActivas(fecha);
             let estados = new Set();
             
-            // Si hay 4 o 6 marcas activas, se asume que la jornada está completa.
             if (marcas.length > 0) {
                 let tipos = marcas.map(m => m.tipo);
                 let tieneDuplicados = tipos.length !== new Set(tipos).size;
 
-                if ((marcas.length === 4 || marcas.length === 6) && !tieneDuplicados) {
-                    // Jerarquía: Válido > Actualizado > Por Validar
-                    if (this.fechasConfirmadas.includes(fecha)) {
-                        estados.add('Válido');
-                    } else if (this.fechasModificadas.includes(fecha)) {
+                if ((marcas.length % 2 === 0) && !tieneDuplicados) {
+                    // --- NUEVA JERARQUÍA QUE RESPETA EL ESTADO 'ACTUALIZADO' DE LA BD ---
+                    if (this.fechasModificadas.includes(fecha) && this.fechasConfirmadas.includes(fecha)) {
                         estados.add('Actualizado');
+                    } else if (this.fechasConfirmadas.includes(fecha)) {
+                        estados.add('Válido');
                     } else {
                         estados.add('Por Validar');
                     }
@@ -188,7 +217,6 @@ document.addEventListener('alpine:init', () => {
                     estados.add('Inconsistente');
                 }
             }
-
             // Si hay Inconsistencia, gana y sobreescribe cualquier otro estado
             if (estados.has('Inconsistente')) {
                 estados.clear(); 
@@ -213,31 +241,47 @@ document.addEventListener('alpine:init', () => {
                 // --- MEMORIA DE CONFIRMACIÓN ---
         fechasConfirmadas: [], // Guarda los días que ya tienen el "check" verde
 
-        // --- NUEVAS FUNCIONES DE CONFIRMACIÓN ---
+        // --- FUNCIONES DE CONFIRMACIÓN ---
         toggleConfirmarDia(fecha) {
             if (this.fechasConfirmadas.includes(fecha)) {
-                // DESBLOQUEAR: Quitamos de la lista
+                // DESBLOQUEAR: Quitamos de la lista de candados cerrados
                 this.fechasConfirmadas = this.fechasConfirmadas.filter(f => f !== fecha);
                 
-                // Retornar a 'Por Validar' adentro del modal
+                // Si el día ya había sido tocado por un humano (fue modificado alguna vez),
+                // al desbloquearlo no debería volver a 'Por Validar', porque sus datos no son los crudos.
+                // En cambio, si era un día inmaculado, sí vuelve a 'Por Validar'.
                 if (this.todosLosRegistros[fecha]) {
                     this.todosLosRegistros[fecha].forEach(marca => {
+                        // Solo revertimos a 'Por Validar' si la marca era 'Válido' (inmaculada).
+                        // Si era 'Actualizado', se queda como 'Actualizado' para no perder el rastro de la edición.
                         if (marca.estado === 'Válido') marca.estado = 'Por Validar';
                     });
                 }
                 console.log(`Día ${fecha} DESBLOQUEADO:`, this.todosLosRegistros[fecha]);
             } else {
-                // CONFIRMAR: Añadimos a la lista
+                // CONFIRMAR: Añadimos a la lista (Cerramos el candado)
                 this.fechasConfirmadas.push(fecha);
                 
-                // Cambiamos a 'Válido' todos los registros adentro del modal
+                // Si la persona le da "check" a la fila entera, evaluamos el estado de cada marca adentro
                 if (this.todosLosRegistros[fecha]) {
                     this.todosLosRegistros[fecha].forEach(marca => {
-                        if (marca.estado !== 'Descartado') marca.estado = 'Válido';
+                        // Si la marca no está descartada y era 'Por Validar' (cruda), pasa a 'Válido'.
+                        // Si la marca era 'Actualizado' (editada a mano), se queda como 'Actualizado' ¡y no se baja de rango!
+                        if (marca.estado !== 'Descartado' && marca.estado === 'Por Validar') {
+                            marca.estado = 'Válido';
+                        }
                     });
                 }
                 console.log(`Día ${fecha} CONFIRMADO:`, this.todosLosRegistros[fecha]);
             }
+            
+            // Registrar que el check verde cuenta como una modificación a guardar
+            if (!this.fechasModificadas.includes(fecha)) {
+                this.fechasModificadas.push(fecha);
+            }
+            this.hayCambiosGuardados = true; 
+            // ------------------------------------------------------------------------
+
             console.log(`Progreso: ${this.diasListos()} de ${Object.keys(this.todosLosRegistros).length} días listos.`);
         },
 
@@ -296,6 +340,20 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        // --- NUEVA FUNCIÓN: Memoria de validación ---
+        toggleValidacionMarca(marca) {
+            if (marca.estado === 'Válido') {
+                // Si se arrepiente (quita el check), restaura el estado que guardamos.
+                // Si por alguna razón no hay estado previo, el fallback seguro es 'Por Validar'.
+                marca.estado = marca.estado_previo || 'Por Validar';
+            } else {
+                // Si va a validar (dar el check), primero guardamos una copia de lo que era
+                // (ej. guarda 'Inconsistente' o 'Por Validar') antes de pasarlo a Válido.
+                marca.estado_previo = marca.estado;
+                marca.estado = 'Válido';
+            }
+        },
+
         agregarNuevoRegistro() {
             // PASO 4 (Interacción): Limita a 6 marcas ACTIVAS máximo por día
             
@@ -310,7 +368,8 @@ document.addEventListener('alpine:init', () => {
             
             // Inyecta una fila vacía estándar al final de la tabla
             this.modalMarcaciones.push({
-                id_registro: null, 
+                // Generamos un ID temporal único para que la animación roja no falle si este registro causa error
+                id_registro: 'temp_' + Math.random().toString(36).substr(2, 9), 
                 hora: '00:00',
                 tipo: 'Entrada',
                 estado: 'Actualizado', 
@@ -323,10 +382,19 @@ document.addEventListener('alpine:init', () => {
             const marcasActivasLista = this.modalMarcaciones.filter(m => m.estado !== 'Descartado');
             const marcasActivas = marcasActivasLista.length;
 
-            // Regla 1: La cantidad de marcas activas debe ser estrictamente 4 o 6.
-            // Se permite 0 por si el administrador decide descartar todo el dia.
-            if (marcasActivas > 0 && marcasActivas !== 4 && marcasActivas !== 6) {
-                this.notificar(`Inconsistencia: El dia debe tener exactamente 4 o 6 marcas. Actualmente existen ${marcasActivas} activas.`, "warning");
+            // Regla 1: Debe haber al menos 2 marcas (no se permite 0) y debe ser un número par.
+            if (marcasActivas === 0 || marcasActivas % 2 !== 0) {
+                // Si dejaron en 0, iluminamos todos los registros del modal (aunque estén descartados).
+                // Si es impar, iluminamos solo los que dejaron activos.
+                let idsError = marcasActivas === 0 
+                    ? this.modalMarcaciones.map(m => m.id_registro) 
+                    : marcasActivasLista.map(m => m.id_registro);
+                
+                let mensajeError = marcasActivas === 0 
+                    ? "Error: No se permite descartar todos los registros. La jornada debe tener al menos una Entrada y una Salida."
+                    : `Inconsistencia: El día debe tener un número par de marcas (pares de entrada/salida). Actualmente existen ${marcasActivas} activas.`;
+
+                this.marcarErroresVisuales(idsError, mensajeError);
                 return; 
             }
 
@@ -337,30 +405,90 @@ document.addEventListener('alpine:init', () => {
             );
 
             if (marcasSinRevisar.length > 0) {
-                this.notificar("Aun existen registros 'Por Validar' o 'Inconsistentes'. Revise y asigne un estado valido a cada marcacion.", "warning");
+                // Extraemos los IDs exclusivamente de los registros que faltan por revisar
+                let idsSinRevisar = marcasSinRevisar.map(m => m.id_registro);
+                
+                this.marcarErroresVisuales(
+                    idsSinRevisar, 
+                    "Aún existen registros 'Por Validar' o 'Inconsistentes'. Revise y asigne un estado válido a cada marcación resaltada."
+                );
                 return; 
             }
 
-            // Regla 3: No permitir horas duplicadas exactas.
-            const horas = marcasActivasLista.map(m => m.hora);
-            if (horas.length !== new Set(horas).size) {
-                this.notificar("Error: Existen dos o mas marcaciones con exactamente la misma hora. Por favor, corrija las horas duplicadas.", "error");
-                return; 
-            }
-
-            // Regla 4: No permitir tipos de marcas repetidos (ej. dos "Entrada" activas).
-            let tiposActivos = new Set();
+            // Regla 3: No permitir horas duplicadas exactas con animación visual.
+            let horasVistas = {};
             for (let marca of marcasActivasLista) {
-                if (tiposActivos.has(marca.tipo)) {
-                    this.notificar(`Error: Tiene mas de un registro de "${marca.tipo}" activo. Debe descartar uno o cambiar el tipo.`, "error");
+                if (horasVistas[marca.hora]) {
+                    // Si la hora ya existe en nuestro registro, disparamos el error visual con ambos IDs
+                    this.marcarErroresVisuales(
+                        [horasVistas[marca.hora], marca.id_registro], 
+                        `Error: Existen marcaciones con exactamente la misma hora (${marca.hora}). Por favor, cambie una o descártela.`
+                    );
                     return; 
                 }
-                tiposActivos.add(marca.tipo);
+                horasVistas[marca.hora] = marca.id_registro;
+            }
+
+            // Regla 4: No permitir tipos de marcas repetidos con animación visual.
+            let tiposVistos = {};
+            for (let marca of marcasActivasLista) {
+                if (tiposVistos[marca.tipo]) {
+                    // Si el tipo (ej. "Entrada") ya existe, disparamos el error visual con ambos IDs
+                    this.marcarErroresVisuales(
+                        [tiposVistos[marca.tipo], marca.id_registro], 
+                        `Error: Tiene más de un registro de "${marca.tipo}" activo. Debe descartar uno o cambiar el tipo.`
+                    );
+                    return; 
+                }
+                tiposVistos[marca.tipo] = marca.id_registro;
             }
 
             // Paso 5: Cierre y guardado en memoria
             // A. Ordenar las marcas cronologicamente
             this.modalMarcaciones.sort((a, b) => a.hora.localeCompare(b.hora));
+
+            // --- REGLAS LOGICAS DE EVENTOS EN EL TIEMPO CON ANIMACIÓN VISUAL ---
+            const marcasOrdenadas = this.modalMarcaciones.filter(m => m.estado !== 'Descartado');
+            if (marcasOrdenadas.length > 0) {
+                
+                // 1. Lógica de Jornada (Entrada primero)
+                const hayEntrada = marcasOrdenadas.find(m => m.tipo === 'Entrada');
+                if (hayEntrada && marcasOrdenadas[0].tipo !== 'Entrada') {
+                    this.marcarErroresVisuales([marcasOrdenadas[0].id_registro, hayEntrada.id_registro], "Incoherencia: El registro de 'Entrada' debe ser el primero del día. Las filas en conflicto están resaltadas.");
+                    return; // Bloquea el guardado
+                }
+                
+                // Lógica de Jornada (Salida al final)
+                const haySalida = marcasOrdenadas.find(m => m.tipo === 'Salida');
+                const ultimoRegistro = marcasOrdenadas[marcasOrdenadas.length - 1];
+                if (haySalida && ultimoRegistro.tipo !== 'Salida') {
+                    this.marcarErroresVisuales([ultimoRegistro.id_registro, haySalida.id_registro], "Incoherencia: El registro de 'Salida' final debe ser el último del día. Las filas en conflicto están resaltadas.");
+                    return; // Bloquea el guardado
+                }
+
+                // 2. Lógica de Almuerzo (La salida debe ocurrir antes que el regreso)
+                const regSalidaAlm = marcasOrdenadas.find(m => m.tipo === 'Salida Almuerzo');
+                const regRegresoAlm = marcasOrdenadas.find(m => m.tipo === 'Regreso Almuerzo');
+                
+                if (regSalidaAlm && regRegresoAlm) {
+                    if (marcasOrdenadas.indexOf(regSalidaAlm) > marcasOrdenadas.indexOf(regRegresoAlm)) {
+                        this.marcarErroresVisuales([regSalidaAlm.id_registro, regRegresoAlm.id_registro], "Incoherencia: La 'Salida Almuerzo' no puede registrarse después del 'Regreso Almuerzo'.");
+                        return; // Bloquea el guardado
+                    }
+                }
+
+                // 3. Lógica de Comisión (La salida debe ocurrir antes que el regreso)
+                const regSalidaCom = marcasOrdenadas.find(m => m.tipo === 'Salida Comisión');
+                const regRegresoCom = marcasOrdenadas.find(m => m.tipo === 'Regreso Comisión');
+                
+                if (regSalidaCom && regRegresoCom) {
+                    if (marcasOrdenadas.indexOf(regSalidaCom) > marcasOrdenadas.indexOf(regRegresoCom)) {
+                        this.marcarErroresVisuales([regSalidaCom.id_registro, regRegresoCom.id_registro], "Incoherencia: La 'Salida Comisión' no puede registrarse después del 'Regreso Comisión'.");
+                        return; // Bloquea el guardado
+                    }
+                }
+            }
+            // ------------------------------------------------
 
             // B. Pasar la copia de trabajo a la memoria central
             this.todosLosRegistros[this.modalFecha] = JSON.parse(JSON.stringify(this.modalMarcaciones));
@@ -388,24 +516,51 @@ document.addEventListener('alpine:init', () => {
         },
 
         aplicarCambiosServidor() {
-            // PASO 6: Envío Final al Backend (AÚN POR IMPLEMENTAR EN FLASK)
-            if (!this.hayCambiosGuardados) return;
+            // En lugar de un rechazo silencioso, avisamos al usuario si no hay nada que guardar
+            if (this.fechasModificadas.length === 0) {
+                this.notificar("No se han detectado modificaciones nuevas para guardar.", "info");
+                return;
+            }
 
-            // Preparar los datos (JSON) para enviar por Fetch
+            // Bloquear pantalla
+            this.isSaving = true;
+
+            // Preparar el payload
             let payload = {
                 id_funcionario: this.datosUsuario ? this.datosUsuario.nombres : null,
+                mes_completo: document.querySelector('input[name="mes"]').value, // Ej: "2026-03"
                 fechas_modificadas: {}
             };
 
-            // Solo enviamos los días que sufrieron modificaciones para no saturar la red
+            // Empaquetar solo los días que el usuario tocó (con lápiz o con check)
             this.fechasModificadas.forEach(fecha => {
                 payload.fechas_modificadas[fecha] = this.todosLosRegistros[fecha];
             });
 
-            console.log("Payload que se enviará al Backend:", payload);
-            this.notificar("Simulación: Datos listos para enviar al backend. Revisa la consola.", "info");
-            
-            // FUTURO: Aquí va el fetch('url_guardar', { method: 'POST', body: JSON.stringify(payload) })
+            console.log("Enviando JSON al servidor:", payload);
+
+            // Enviar a Flask
+            fetch('/api/guardar_edicion_jornada', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Recargar la página con un parámetro de éxito
+                    window.location.href = window.location.pathname + window.location.search + '&success=true';
+                } else {
+                    this.isSaving = false;
+                    this.notificar(data.error || "Error al guardar los datos.", "error");
+                }
+            })
+            .catch(error => {
+                console.error("Error crítico en fetch:", error);
+                this.isSaving = false;
+                this.notificar("Error de conexión al guardar los datos.", "error");
+            });
         }
+
     }));
 });

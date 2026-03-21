@@ -204,7 +204,7 @@
                                                         <i class="fas fa-chevron-left text-sm"></i>
                                                     </button>
 
-                                                    <div x-ref="container" @scroll.debounce="checkScroll()"  class="flex flex-nowrap gap-3 items-center justify-start w-full pb-3 pt-1 px-7 overflow-x-auto custom-scrollbar transition-all duration-300" :class="fechasConfirmadas.includes('{{ reg.fecha }}') ? 'pointer-events-none opacity-50 grayscale-[50%]' : ''">
+                                                    <div x-ref="container" @scroll.debounce="checkScroll()"  class="flex flex-nowrap gap-3 items-center justify-start w-full pb-3 pt-1 px-7 overflow-x-auto custom-scrollbar transition-all duration-300" :class="fechasConfirmadas.includes('{{ reg.fecha }}') ? 'opacity-60 grayscale-[30%]' : ''">
                                                         
                                                         <template x-for="(mark, i) in obtenerMarcasActivas('{{ reg.fecha }}')" :key="i">
                                                             <div class="flex-shrink-0 flex flex-col items-center justify-center px-4 py-2 rounded-xl border-2 shadow-sm w-[115px] h-[85px] transition-colors"
@@ -375,32 +375,37 @@
                         <thead>
                             <tr class="bg-gray-100 text-slate-600 text-xs uppercase tracking-wider text-center">
                                 
-                                <th class="p-3 font-black border-b-2 border-brand-blue bg-brand-blue text-white shadow-sm">
-                                    <i class="fas fa-edit mr-1"></i> Hora
-                                </th>
+                                <th class="p-3 font-black border-b-2 border-brand-blue bg-brand-blue text-white shadow-sm">Hora</th>
                                 <th class="p-3 font-black border-b-2 border-brand-blue bg-brand-blue text-white shadow-sm">
                                     <i class="fas fa-edit mr-1"></i> Tipo de Marcación
                                 </th>
-                                
-                                <th class="p-3 font-bold border-b-2 border-gray-200">Método</th>
-                                <th class="p-3 font-bold border-b-2 border-gray-200">Estado</th>
-                                <th class="p-3 font-bold border-b-2 border-gray-200">Acción</th>
+                                <th class="p-3 font-black border-b-2 border-brand-blue/70 bg-brand-blue/70 text-white shadow-sm"">Método</th>
+                                <th class="p-3 font-black border-b-2 border-brand-blue/70 bg-brand-blue/70 text-white shadow-sm"">Estado</th>
+                                <th class="p-3 font-black border-b-2 border-brand-blue/70 bg-brand-blue/70 text-white shadow-sm"">Acción</th>
                                 
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <template x-for="(marca, index) in modalMarcaciones" :key="index">
-                                <tr class="transition-colors hover:bg-gray-50" :class="marca.estado === 'Descartado' ? 'opacity-60 bg-red-50' : ''">
+                                <tr class="transition-all duration-500" :class="{'opacity-60 bg-red-50': marca.estado === 'Descartado' && !registrosConError.includes(marca.id_registro),'bg-red-200 animate-pulse border-y-2 border-red-500 shadow-[inset_0_0_10px_rgba(239,68,68,0.5)]': registrosConError.includes(marca.id_registro),'hover:bg-gray-50': marca.estado !== 'Descartado' && !registrosConError.includes(marca.id_registro)}">
                                     <td class="p-3 text-center">
                                         <input type="time" 
                                                x-model="marca.hora" 
                                                @change="marca.estado = 'Actualizado'" 
-                                               class="border-2 border-brand-blue rounded-md p-1.5 text-center font-black text-brand-blue w-28 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-blue/50 transition-all hover:bg-blue-50/50 cursor-pointer">
+                                               :disabled="marca.estado === 'Descartado'"
+                                               :readonly="marca.metodo !== 'MANUAL'"
+                                               class="border-2 border-brand-blue rounded-md p-1.5 text-center font-black text-brand-blue w-28 bg-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:border-gray-300 disabled:text-gray-500"
+                                               :class="{
+                                                   'hover:bg-blue-50/50 focus:outline-none focus:ring-2 focus:ring-brand-blue/50 cursor-pointer': marca.metodo === 'MANUAL' && marca.estado !== 'Descartado',
+                                                   'cursor-not-allowed opacity-90 pointer-events-none': marca.metodo !== 'MANUAL' && marca.estado !== 'Descartado'
+                                               }">
                                     </td>
+                                    
                                     <td class="p-3 text-center">
                                         <select x-model="marca.tipo" 
                                                 @change="marca.estado = 'Actualizado'" 
-                                                class="border-2 border-brand-blue rounded-md p-1.5 text-sm font-black text-brand-blue w-full bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-blue/50 transition-all hover:bg-blue-50/50 cursor-pointer">
+                                                :disabled="marca.estado === 'Descartado'"
+                                                class="border-2 border-brand-blue rounded-md p-1.5 text-sm font-black text-brand-blue w-full bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-blue/50 transition-all hover:bg-blue-50/50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:border-gray-300 disabled:text-gray-500">
                                             
                                             <option :value="marca.tipo" 
                                                     x-text="marca.tipo" 
@@ -413,27 +418,43 @@
                                             <option value="Salida">Salida</option>
                                             <option value="Salida Comisión">Salida Comisión</option>
                                             <option value="Regreso Comisión">Regreso Comisión</option>
-                                            
                                         </select>
                                     </td>
+                                    
                                     <td class="p-3 text-center text-xs font-bold text-gray-500 uppercase" x-text="marca.metodo"></td>
+                                    
                                     <td class="p-3 text-center">
-                                        <select x-model="marca.estado" class="border border-gray-300 rounded-md p-1 text-sm font-bold focus:border-brand-blue outline-none"
-                                                :class="{'text-blue-600': marca.estado==='Por Validar', 'text-green-600': marca.estado==='Actualizado' || marca.estado==='Válido', 'text-red-600': marca.estado==='Descartado' || marca.estado==='Inconsistente'}">
-                                            <option value="Válido">Válido</option>
-                                            <option value="Actualizado">Actualizado</option>
-                                            <option value="Descartado">Descartado</option>
-                                            <option value="Por Validar">Por Validar</option>
-                                            <option value="Inconsistente">Inconsistente</option>
-                                   
-                                        </select>
+                                        <span class="px-3 py-1.5 rounded-lg text-[0.70rem] font-black uppercase tracking-wider border shadow-sm w-full inline-block"
+                                              :class="{
+                                                  'bg-blue-50 text-blue-600 border-blue-200': marca.estado === 'Por Validar', 
+                                                  'bg-emerald-50 text-emerald-600 border-emerald-200': marca.estado === 'Válido',
+                                                  'bg-green-50 text-green-600 border-green-200': marca.estado === 'Actualizado', 
+                                                  'bg-red-50 text-red-600 border-red-200': marca.estado === 'Descartado' || marca.estado === 'Inconsistente'
+                                              }"
+                                              x-text="marca.estado">
+                                        </span>
                                     </td>
+                                    
                                     <td class="p-3 text-center">
-                                        <button @click="alternarDescartado(index)" title="Descartar/Restaurar"
-                                                class="w-8 h-8 rounded-full flex items-center justify-center transition-colors mx-auto"
-                                                :class="marca.estado === 'Descartado' ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'">
-                                            <i class="fas" :class="marca.estado === 'Descartado' ? 'fa-undo' : 'fa-trash'"></i>
-                                        </button>
+                                        <div class="flex items-center justify-center gap-2">
+                                            
+                                            <button type="button" 
+                                                    x-show="['Por Validar', 'Válido', 'Inconsistente'].includes(marca.estado)"
+                                                    @click="toggleValidacionMarca(marca)"
+                                                    :title="marca.estado === 'Válido' ? 'Deshacer validación' : 'Forzar validación'"
+                                                    class="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 shadow-sm border"
+                                                    :class="marca.estado === 'Válido' ? 'bg-emerald-100 text-emerald-600 border-emerald-200 hover:bg-emerald-200' : 'bg-blue-50 text-brand-blue border-blue-200 hover:bg-brand-blue hover:text-white hover:border-brand-blue'">
+                                                <i class="fas" :class="marca.estado === 'Válido' ? 'fa-check-circle' : 'fa-check'"></i>
+                                            </button>
+
+                                            <button type="button" @click="alternarDescartado(index)" 
+                                                    :title="marca.estado === 'Descartado' ? 'Restaurar registro' : 'Descartar registro'"
+                                                    class="w-8 h-8 rounded-full flex items-center justify-center transition-colors shadow-sm border"
+                                                    :class="marca.estado === 'Descartado' ? 'bg-gray-200 text-gray-600 border-gray-300 hover:bg-gray-300' : 'bg-red-50 text-red-500 border-red-200 hover:bg-red-100 hover:text-red-600'">
+                                                <i class="fas" :class="marca.estado === 'Descartado' ? 'fa-undo' : 'fa-trash'"></i>
+                                            </button>
+                                            
+                                        </div>
                                     </td>
                                 </tr>
                             </template>
@@ -457,6 +478,14 @@
                 </div>
                 
             </div>
+        </div>
+    </template>
+    <template x-teleport="body">
+        <div x-show="isSaving" style="display: none;" 
+             class="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm transition-opacity">
+            <i class="fas fa-circle-notch fa-spin text-5xl text-brand-blue mb-4"></i>
+            <h2 class="text-2xl font-black text-white tracking-widest uppercase">Guardando Cambios</h2>
+            <p class="text-blue-200 mt-2 font-semibold">Actualizando el registro, por favor espera...</p>
         </div>
     </template>
 </div>
