@@ -2,7 +2,9 @@ import os
 import io
 import pandas as pd
 import logging
+import zipfile
 from flask import render_template, request, jsonify, send_file
+from openpyxl.utils import get_column_letter
 from utils.file_manager import get_uploads_storage_parquet
 
 logger = logging.getLogger(__name__)
@@ -33,14 +35,15 @@ def export_xlsx_page_controller():
     anios_disponibles = sorted(list(anios_disponibles))
 
     return render_template(
-        'users/export_xlsx.html', 
+        'users/audit/export_xlsx.html', 
         meses_disponibles=meses_disponibles,
         anios_disponibles=anios_disponibles
     )
 
 def download_xlsx_controller():
-    """Recibe la petición, convierte el Parquet a Excel en memoria y lo descarga."""
-    mes_req = request.args.get('mes') # Ej: "2026-03"
+    """Recibe la petición, convierte los Parquets a Excel en memoria, autoajusta columnas y los descarga."""
+    mes_req = request.args.get('mes') 
+    modo = request.args.get('modo', 'single') 
 
     if not mes_req:
         return jsonify({"error": "Mes no proporcionado"}), 400
@@ -48,37 +51,108 @@ def download_xlsx_controller():
     try:
         anio, mes = mes_req.split('-')
         nombre_carpeta = f"{mes}-{anio}"
-        ruta_archivo = os.path.join(get_uploads_storage_parquet(), nombre_carpeta, f"{nombre_carpeta}.parquet")
+        base_path = os.path.join(get_uploads_storage_parquet(), nombre_carpeta)
 
-        if not os.path.exists(ruta_archivo):
-            return jsonify({"error": "No hay registros para este mes."}), 404
+        # Ubicar los 3 posibles parquets
+        ruta_1 = os.path.join(base_path, f"{nombre_carpeta}.parquet")
+        ruta_2 = os.path.join(base_path, f"resumen-{nombre_carpeta}.parquet")
+        ruta_3 = os.path.join(base_path, f"diario-{nombre_carpeta}.parquet")
 
-        # 1. Leer el Parquet
-        df = pd.read_parquet(ruta_archivo)
+        if not os.path.exists(ruta_1):
+            return jsonify({"error": "No hay registros base para este mes."}), 404
 
-        # 2. Diccionario para el nombre dinámico del archivo
+        # Nombres dinámicos
         meses_nombres = {
             "01": "ENERO", "02": "FEBRERO", "03": "MARZO", "04": "ABRIL",
             "05": "MAYO", "06": "JUNIO", "07": "JULIO", "08": "AGOSTO",
             "09": "SEPTIEMBRE", "10": "OCTUBRE", "11": "NOVIEMBRE", "12": "DICIEMBRE"
         }
         nombre_mes = meses_nombres.get(mes, "MES")
-        filename = f"REGISTROS-ASISTENCIA-{nombre_mes}-{anio}.xlsx"
+        etiqueta_archivo = f"{nombre_mes}-{anio}"
 
-        # 3. Crear el Excel en memoria RAM (sin escribir en el disco)
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Asistencia')
+        # Cargar los DataFrames 
+        df1 = pd.read_parquet(ruta_1)
+        df2 = pd.read_parquet(ruta_2) if os.path.exists(ruta_2) else None
+        df3 = pd.read_parquet(ruta_3) if os.path.exists(ruta_3) else None
 
-        output.seek(0) # Regresar el puntero al inicio del archivo en memoria
+        # --- IGNORAR COLUMNA GRÁFICA EN EL EXCEL ---
+        # Eliminamos la columna 'grafica' solo del DataFrame en memoria. El archivo .parquet en el disco duro se mantiene totalmente intacto.
+        if df2 is not None and 'grafica' in df2.columns:
+            df2 = df2.drop(columns=['grafica'])
 
-        # 4. Enviar directamente como descarga
-        return send_file(
-            output,
-            download_name=filename,
-            as_attachment=True,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
+        # --- FUNCIÓN: Autoajuste de ancho de columnas ---
+        def autoajustar_columnas(writer_obj, nombre_hoja, dataframe):
+            worksheet = writer_obj.sheets[nombre_hoja]
+            for idx, col in enumerate(dataframe.columns):
+                # 1. Calculamos el ancho del título de la columna
+                ancho_cabecera = len(str(col))
+                
+                # 2. Calculamos el ancho máximo de los datos usando .str.len() que es 100% seguro
+                if not dataframe.empty:
+                    # Convertimos a string nativo de Pandas y medimos
+                    ancho_datos = dataframe[col].astype(str).str.len().max()
+                else:
+                    ancho_datos = 0
+                
+                # 3. Si la columna estaba totalmente vacía, .max() devuelve NaN (float). Lo pasamos a 0.
+                if pd.isna(ancho_datos):
+                    ancho_datos = 0
+                
+                # 4. Escogemos el más grande y le damos 2 puntos de espacio extra
+                ancho_final = max(ancho_cabecera, int(ancho_datos)) + 2
+                
+                # 5. Aplicamos al Excel
+                worksheet.column_dimensions[get_column_letter(idx + 1)].width = ancho_final
+        # ------------------------------------------------------
+
+        if modo == 'single':
+            # --- MODO 1: UN SOLO EXCEL CON 3 HOJAS ---
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                
+                df1.to_excel(writer, index=False, sheet_name='Registros')
+                autoajustar_columnas(writer, 'Registros', df1) # Aplicamos autoajuste
+                
+                if df2 is not None: 
+                    df2.to_excel(writer, index=False, sheet_name='Resumen mensual')
+                    autoajustar_columnas(writer, 'Resumen mensual', df2) # Aplicamos autoajuste
+                    
+                if df3 is not None: 
+                    df3.to_excel(writer, index=False, sheet_name='Resumen diario')
+                    autoajustar_columnas(writer, 'Resumen diario', df3) # Aplicamos autoajuste
+            
+            output.seek(0)
+            return send_file(
+                output,
+                download_name=f"ASISTENCIA-{etiqueta_archivo}.xlsx",
+                as_attachment=True,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+
+        elif modo == 'zip':
+            # --- MODO 2: ARCHIVO ZIP CON 3 EXCELS SEPARADOS ---
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                
+                def agregar_al_zip(df_to_save, nombre_archivo_excel):
+                    if df_to_save is not None:
+                        excel_buffer = io.BytesIO()
+                        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                            df_to_save.to_excel(writer, index=False, sheet_name='Datos')
+                            autoajustar_columnas(writer, 'Datos', df_to_save) # Aplicamos autoajuste aquí también
+                        zf.writestr(nombre_archivo_excel, excel_buffer.getvalue())
+
+                agregar_al_zip(df1, f"REGISTROS-{etiqueta_archivo}.xlsx")
+                agregar_al_zip(df2, f"RESUMEN-{etiqueta_archivo}.xlsx")
+                agregar_al_zip(df3, f"DIARIO-{etiqueta_archivo}.xlsx")
+
+            zip_buffer.seek(0)
+            return send_file(
+                zip_buffer,
+                download_name=f"ASISTENCIA-{etiqueta_archivo}.zip",
+                as_attachment=True,
+                mimetype='application/zip'
+            )
 
     except Exception as e:
         logger.error(f"Error exportando Excel: {e}")

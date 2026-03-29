@@ -8,6 +8,9 @@ document.addEventListener('alpine:init', () => {
         mesTemp: initialMes ? initialMes.split('-')[1] : '', // Extrae el mes (ej: '03')
         anioTemp: initialMes ? initialMes.split('-')[0] : '', // Extrae el año (ej: '2026')
         
+        // --- NUEVO: Mapa para traducir el mes en el botón personalizado ---
+        nombresMeses: { '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril', '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto', '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre' },
+
         nombres: [], // Lista donde guardaremos los nombres devueltos por el backend
         
         loadingNames: false, // Controla si se muestra el ícono de "cargando"
@@ -83,12 +86,12 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('editorMarcaciones', (datosIniciales, datosUsuarioRecibidos) => ({
         
         // --- MEMORIA CENTRAL ---
-        // Aquí vive el historial completo del mes, traído desde Flask
+        // Historial completo del mes, traído desde Flask
         todosLosRegistros: {}, 
         
         // Rastrea qué días específicos han sido alterados en el frontend
         fechasModificadas: [],
-        hayCambiosGuardados: false, // Activa el botón verde grande de "Aplicar Cambios"
+        hayCambiosGuardados: false, // Activa el botón verde de "Aplicar Cambios"
         isSaving: false, // Controla la pantalla de carga al aplicar cambios
 
         // --- VARIABLES VISUALES DEL MODAL ---
@@ -100,7 +103,251 @@ document.addEventListener('alpine:init', () => {
 
         datosUsuario: null,
 
-        // --- FUNCIÓN: Dispara el parpadeo rojo MODAL ---
+        modalGraficaAbierto: false, // Controla el modal de la imagen
+
+        // --- Validar orden lógico del horario oficial ---
+        validarOrdenHoras(campoModificado) {
+            // Si falta alguno de los dos, no podemos comparar aún, pero sí marcamos que hubo un cambio
+            if (!this.datosUsuario.entrada_oficial || !this.datosUsuario.salida_oficial) {
+                this.hayCambiosGuardados = true;
+                return;
+            }
+
+            let minEntrada = this.obtenerMinutos(this.datosUsuario.entrada_oficial);
+            let minSalida = this.obtenerMinutos(this.datosUsuario.salida_oficial);
+
+            // Si la entrada es a la misma hora o después de la salida, es un error
+            if (minEntrada >= minSalida) {
+                this.notificar("Incoherencia: La hora de Entrada no puede ser igual o posterior a la Salida.", "error");
+                
+                // Borramos el campo incorrecto para obligar al auditor a corregirlo
+                if (campoModificado === 'entrada') {
+                    this.datosUsuario.entrada_oficial = '';
+                } else {
+                    this.datosUsuario.salida_oficial = '';
+                }
+                // Al vaciarse el campo, el candado de confirmación se bloqueará automáticamente
+            } else {
+                // Si todo está correcto, activamos el botón de guardar
+                this.hayCambiosGuardados = true;
+            }
+        },
+
+        // --- Verifica si los 3 campos del horario base están llenos ---
+        horarioCompleto() {
+            if (!this.datosUsuario) return false;
+            
+            const ent = this.datosUsuario.entrada_oficial;
+            const sal = this.datosUsuario.salida_oficial;
+            const rec = this.datosUsuario.receso_oficial;
+            
+            // Retorna true solo si los 3 campos tienen algún valor escrito
+            return !!ent && !!sal && !!rec;
+        },
+
+        // --- Candado del Horario Oficial ---
+        toggleConfirmarHorario() {
+            this.datosUsuario.horarioConfirmado = !this.datosUsuario.horarioConfirmado;
+            
+            // Al confirmar (cerrar el candado), lo marcamos visualmente como oficial (ícono verde)
+            if (this.datosUsuario.horarioConfirmado) {
+                this.datosUsuario.es_oficial = true;
+            }
+            
+            // Activa el botón verde principal de "Aplicar Cambios" para enviar a Python
+            this.hayCambiosGuardados = true;
+        },
+
+        // --- Fuerza el formato 24H visualmente
+        formatearHora24(evento, obj, propiedad) {
+            let valor = evento.target.value.replace(/\D/g, ''); // Elimina letras/símbolos
+            
+            if (valor.length >= 3) {
+                valor = valor.substring(0, 2) + ':' + valor.substring(2, 4);
+            }
+            
+            // Validar que no pongan horas irreales (ej: 25:99)
+            if (valor.length === 5) {
+                let partes = valor.split(':');
+                let h = parseInt(partes[0], 10);
+                let m = parseInt(partes[1], 10);
+                
+                if (h > 23) h = 23;
+                if (m > 59) m = 59;
+                
+                valor = h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0');
+            }
+            
+            obj[propiedad] = valor;
+            this.hayCambiosGuardados = true; // Activa el botón de guardar automáticamente
+        },
+
+        // --- MATEMÁTICA DE ATRASOS Y SALIDAS ANTICIPADAS ---
+
+        // 1. Convierte formato HH:mm a minutos totales para poder restar
+        obtenerMinutos(horaStr) {
+            if (!horaStr || !horaStr.includes(':')) return 0;
+            let [h, m] = horaStr.split(':').map(Number);
+            return (h * 60) + m;
+        },
+
+        // 2. Calcula el descuento individual evaluando el tipo de marca
+        calcularPenalizacionMarca(marca, fecha) {
+            if (!this.datosUsuario) return null;
+            if (marca.estado === 'Descartado') return null;
+
+            if (marca.tipo === 'Entrada') {
+                if (!this.datosUsuario.entrada_oficial) return null;
+                let minOficialEntrada = this.obtenerMinutos(this.datosUsuario.entrada_oficial);
+                let minMarca = this.obtenerMinutos(marca.hora);
+                let atraso = minMarca - minOficialEntrada;
+                return atraso > 0 ? Number(atraso) : 0;
+            }
+            
+            if (marca.tipo === 'Salida') {
+                if (!this.datosUsuario.salida_oficial) return null;
+                let minOficialSalida = this.obtenerMinutos(this.datosUsuario.salida_oficial);
+                let minMarca = this.obtenerMinutos(marca.hora);
+                let salidaAnticipada = minOficialSalida - minMarca;
+                return salidaAnticipada > 0 ? Number(salidaAnticipada) : 0;
+            }
+
+            if (marca.tipo === 'Salida Almuerzo') {
+                if (!this.datosUsuario.receso_oficial) return null;
+                return 0; // Retorna 0 para mostrar la etiqueta azul "Inicia Receso" sin penalizar
+            }
+
+            if (marca.tipo === 'Regreso Almuerzo') {
+                if (!this.datosUsuario.receso_oficial) return null;
+                
+                // Buscar a qué hora salió a almorzar este mismo día
+                let marcasDia = this.obtenerMarcasActivas(fecha);
+                let salidaAlmuerzo = marcasDia.find(m => m.tipo === 'Salida Almuerzo');
+                
+                if (!salidaAlmuerzo) return 0; // Si no hay salida de almuerzo, no se puede calcular
+
+                let minSalidaAlm = this.obtenerMinutos(salidaAlmuerzo.hora);
+                let minRegresoAlm = this.obtenerMinutos(marca.hora);
+                
+                let duracionReal = minRegresoAlm - minSalidaAlm;
+                let duracionPermitida = this.obtenerMinutos(this.datosUsuario.receso_oficial);
+                
+                let exceso = duracionReal - duracionPermitida;
+                
+                // Forzamos estrictamente a que retorne un número real
+                return exceso > 0 ? Number(exceso) : 0; 
+            }
+
+            return null; // Si es Comisión, lo ignora
+        },
+
+        // --- NUEVA FUNCIÓN: Mantiene el HTML limpio ---
+        textoPenalizacion(marca, fecha) {
+            let pen = this.calcularPenalizacionMarca(marca, fecha);
+            if (pen === null) return '';
+            
+            if (pen > 0) {
+                if (marca.tipo === 'Entrada') return `Atraso: ${pen}m`;
+                if (marca.tipo === 'Salida') return `Anticipada: ${pen}m`;
+                if (marca.tipo === 'Regreso Almuerzo') return `Exceso: ${pen}m`;
+            } else {
+                if (marca.tipo === 'Entrada') return 'Sin atraso';
+                if (marca.tipo === 'Salida') return 'Salida OK';
+                if (marca.tipo === 'Salida Almuerzo') return 'Inicia Receso';
+                if (marca.tipo === 'Regreso Almuerzo') return 'Receso OK';
+            }
+            return '';
+        },
+
+        // 3. Suma el total del día 
+        calcularPenalizacionDia(fecha) {
+            let marcas = this.obtenerMarcasActivas(fecha);
+            let totalDia = 0;
+            let tieneCalculo = false;
+
+            marcas.forEach(m => {
+                let penalizacion = this.calcularPenalizacionMarca(m, fecha);
+                if (penalizacion !== null) {
+                    // REFUERZO MATEMÁTICO: Obligamos a JS a sumar números, no textos
+                    totalDia += Number(penalizacion); 
+                    tieneCalculo = true;
+                }
+            });
+            
+            return tieneCalculo ? totalDia : null;
+        },
+
+        // 4. Suma el total del mes y lo formatea a HH:MM
+        calcularPenalizacionMensual() {
+            if (!this.datosUsuario || !this.datosUsuario.entrada_oficial || !this.datosUsuario.salida_oficial) return null;
+            
+            let totalGlobal = 0;
+            for (let fecha in this.todosLosRegistros) {
+                // Solo suma si el día fue auditado (Válido o Actualizado)
+                let estados = this.obtenerEstadosDia(fecha);
+                if (estados.includes('Válido') || estados.includes('Actualizado')) {
+                    let penDia = this.calcularPenalizacionDia(fecha);
+                    if (penDia !== null) totalGlobal += penDia;
+                }
+            }
+            return totalGlobal;
+        },
+
+        // Formateador visual (pasa de 65 min a "01:05")
+        formatearMinutos(totalMinutos) {
+            if (totalMinutos === null) return '--:--';
+            let h = Math.floor(totalMinutos / 60);
+            let m = totalMinutos % 60;
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        },
+
+        // ------------------------------------------------------------------
+
+        // --- Conteo de días asistidos ---
+        
+        // --- NUEVO: Extraer penalizaciones diarias para el Backend ---
+        obtenerPenalizacionesDia(fecha) {
+            let marcas = this.obtenerMarcasActivas(fecha);
+            let atrasoEnt = 0;
+            let atrasoAlm = 0;
+            let atrasoSal = 0;
+
+            marcas.forEach(m => {
+                let pen = this.calcularPenalizacionMarca(m, fecha);
+                if (pen !== null && pen > 0) {
+                    if (m.tipo === 'Entrada') atrasoEnt += pen;
+                    if (m.tipo === 'Salida') atrasoSal += pen;
+                    if (m.tipo === 'Regreso Almuerzo') atrasoAlm += pen;
+                }
+            });
+
+            return {
+                atrasoEntrada: this.formatearMinutos(atrasoEnt),
+                atrasoAlmuerzo: this.formatearMinutos(atrasoAlm),
+                atrasoSalida: this.formatearMinutos(atrasoSal)
+            };
+        },
+        
+        // Retorna el total de días que existen en el JSON de este mes
+        totalDiasMes() {
+            return Object.keys(this.todosLosRegistros).length;
+        },
+
+        // Retorna cuántos días tienen al menos una marca no descartada
+        diasAsistidos() {
+            let asistencias = 0;
+            for (let fecha in this.todosLosRegistros) {
+                let marcasDelDia = this.todosLosRegistros[fecha];
+                // Buscamos si hay alguna marca que NO sea 'Descartado'
+                let diaActivo = marcasDelDia.some(m => m.estado !== 'Descartado');
+                if (diaActivo) {
+                    asistencias++;
+                }
+            }
+            return asistencias;
+        },
+        
+        // --- Dispara el parpadeo rojo MODAL ---
         marcarErroresVisuales(idsRegistros, mensaje) {
             this.registrosConError = idsRegistros;
             this.notificar(mensaje, "error");
@@ -120,25 +367,27 @@ document.addEventListener('alpine:init', () => {
 
         init() {
             // PASO 1: Inyectar datos iniciales
-            // Flask manda un diccionario gigante con todas las marcas. Lo copiamos.
-            // Recibe los datos de Python y los hace suyos
             this.todosLosRegistros = JSON.parse(JSON.stringify(datosIniciales || {}));
             this.datosUsuario = datosUsuarioRecibidos;
 
-            // datos del los registros (JSON)
-            
             console.log("Datos del Funcionario:", this.datosUsuario);
             console.log("Estructura del JSON cargado:", this.todosLosRegistros);
+
+            // --- NUEVO: Estado del candado del horario base ---
+            if (this.datosUsuario) {
+                // Si ya era un dato oficial (auditado), aparece bloqueado por defecto.
+                this.datosUsuario.horarioConfirmado = this.datosUsuario.es_oficial || false;
+            }
+            // --------------------------------------------------
 
             // Escanear la data que llega al inicio desde el backend para pintar las inconsistencias individuales
             this.marcarDuplicadosIniciales();
             
-            // --- NUEVO: LEER ESTADOS REALES  ---
-            // Leemos la columna 'tipoValidacion' que Python metió en cada 'marca.estado'
+            // --- REAURADO: LEER ESTADOS REALES DESDE LA BASE DE DATOS ---
             for (let fecha in this.todosLosRegistros) {
                 let marcasDelDia = this.todosLosRegistros[fecha];
                 
-                // La BD nos dice que este día ya fue validado o actualizado en el pasado
+                // La BD nos dice si este día ya tiene marcas validadas o actualizadas
                 let tieneActualizado = marcasDelDia.some(m => m.estado === 'Actualizado');
                 let tieneValido = marcasDelDia.some(m => m.estado === 'Válido');
                 
@@ -147,13 +396,13 @@ document.addEventListener('alpine:init', () => {
                     this.fechasModificadas.push(fecha);
                 }
                 
-                // 2. Si vino como Válido o Actualizado, CERRAMOS EL CANDADO (lo confirmamos visualmente)
+                // 2. Si vino como Válido o Actualizado desde el JSON, CERRAMOS EL CANDADO
                 if ((tieneValido || tieneActualizado) && !this.fechasConfirmadas.includes(fecha)) {
                     this.fechasConfirmadas.push(fecha);
                 }
             }
 
-            // Escuchamos cuando el usuario hace click en el lápiz de cualquier tabla
+            // RESTAURADO: Escuchar cuando el usuario hace click en el lápiz
             this.$el.addEventListener('abrir-modal', (e) => {
                 this.abrirModalEdicion(e.detail.fecha, e.detail.dia);
             });
@@ -178,11 +427,17 @@ document.addEventListener('alpine:init', () => {
                 
                 // Evaluamos si el dia tiene una cantidad impar de marcas
                 let cantidadInvalida = (marcasActivas.length > 0 && marcasActivas.length % 2 !== 0);
+
+                // --- NUEVA LÓGICA INFALIBLE PARA 2 MARCAS ---
+                // Si hay 2 marcas, TIENEN que ser Entrada y Salida. Si falta alguna, es inconsistente.
+                let tiposActivos = marcasActivas.map(m => m.tipo);
+                let combinacionInvalida2Marcas = (marcasActivas.length === 2 && 
+                                                  !(tiposActivos.includes('Entrada') && tiposActivos.includes('Salida')));
                 
-                // Si encontramos un repetido o la cantidad del dia es invalida, marcamos todo como 'Inconsistente'
+                // Si encontramos un repetido, cantidad impar, o un combo inválido de 2 marcas, marcamos todo
                 this.todosLosRegistros[fecha].forEach(m => {
                     if (m.estado !== 'Descartado') {
-                        if (conteosTipos[m.tipo] > 1 || conteosHoras[m.hora] > 1 || cantidadInvalida) {
+                        if (conteosTipos[m.tipo] > 1 || conteosHoras[m.hora] > 1 || cantidadInvalida || combinacionInvalida2Marcas) {
                             m.estado = 'Inconsistente';
                         }
                     }
@@ -204,27 +459,43 @@ document.addEventListener('alpine:init', () => {
                 let tipos = marcas.map(m => m.tipo);
                 let tieneDuplicados = tipos.length !== new Set(tipos).size;
 
-                if ((marcas.length % 2 === 0) && !tieneDuplicados) {
-                    // --- NUEVA JERARQUÍA QUE RESPETA EL ESTADO 'ACTUALIZADO' DE LA BD ---
-                    if (this.fechasModificadas.includes(fecha) && this.fechasConfirmadas.includes(fecha)) {
-                        estados.add('Actualizado');
-                    } else if (this.fechasConfirmadas.includes(fecha)) {
-                        estados.add('Válido');
+                // --- SINCRONIZADO CON LA REGLA INFALIBLE ---
+                let combinacionInvalida2Marcas = (marcas.length === 2 && 
+                                                  !(tipos.includes('Entrada') && tipos.includes('Salida')));
+                
+                let tieneMarcasInconsistentes = marcas.some(m => m.estado === 'Inconsistente');
+
+                // Si pasa todas las validaciones estructurales...
+                if ((marcas.length % 2 === 0) && !tieneDuplicados && !combinacionInvalida2Marcas && !tieneMarcasInconsistentes) {
+                    
+                    let tieneActualizado = marcas.some(m => m.estado === 'Actualizado');
+
+                    if (this.fechasConfirmadas.includes(fecha)) {
+                        if (tieneActualizado) {
+                            estados.add('Actualizado');
+                        } else {
+                            estados.add('Válido');
+                        }
                     } else {
-                        estados.add('Por Validar');
+                        if (tieneActualizado) {
+                            estados.add('Actualizado'); 
+                        } else {
+                            estados.add('Por Validar');
+                        }
                     }
+
                 } else {
+                    // Si cae en la trampa, bloqueamos
                     estados.add('Inconsistente');
                 }
             }
-            // Si hay Inconsistencia, gana y sobreescribe cualquier otro estado
+            
             if (estados.has('Inconsistente')) {
                 estados.clear(); 
                 estados.add('Inconsistente');
             }
 
             return Array.from(estados);
-                   
         },
 
         // --------------------
@@ -272,7 +543,7 @@ document.addEventListener('alpine:init', () => {
                         }
                     });
                 }
-                console.log(`Día ${fecha} CONFIRMADO:`, this.todosLosRegistros[fecha]);
+                console.log(`Progreso: ${this.tareasCompletadas()} de ${this.tareasTotales()} validaciones listas.`);
             }
             
             // Registrar que el check verde cuenta como una modificación a guardar
@@ -285,27 +556,48 @@ document.addEventListener('alpine:init', () => {
             console.log(`Progreso: ${this.diasListos()} de ${Object.keys(this.todosLosRegistros).length} días listos.`);
         },
 
-        // --- FUNCIÓN: Cuenta cuántos días están listos para enviarse ---
-        diasListos() {
-            let count = 0;
-            // Recorremos todas las fechas cargadas
-            for (let fecha in this.todosLosRegistros) {
-                // Obtenemos qué dice su etiqueta principal en la tabla
-                let estados = this.obtenerEstadosDia(fecha);
-                
-                // Si la etiqueta dice Válido o Actualizado, lo contamos como listo
-                if (estados.includes('Válido') || estados.includes('Actualizado')) {
-                    count++;
-                }
-            }
-            return count;
+        // Cuenta el total de acciones requeridas (Días en la tabla + 1 del Horario Principal)
+        tareasTotales() {
+            let total = Object.keys(this.todosLosRegistros).length;
+            if (this.datosUsuario) total += 1; // Sumamos 1 por el candado del horario
+            return total;
         },
 
-        // Verifica si el total de días en la tabla es igual al total de checks dados
-        todasConfirmadas() {
-            const totalDias = Object.keys(this.todosLosRegistros).length;
-            return totalDias > 0 && this.diasListos() === totalDias;
+        // Cuenta ESTRICTAMENTE cuántos candados (checks) están cerrados actualmente
+        tareasCompletadas() {
+            // Contamos los candados cerrados en la tabla (ya no nos fijamos en la etiqueta de texto)
+            let completadas = this.fechasConfirmadas.length; 
+            
+            // Sumamos 1 si el candado del horario principal está cerrado
+            if (this.datosUsuario && this.datosUsuario.horarioConfirmado) {
+                completadas += 1;
+            }
+            return completadas;
         },
+
+        // Verifica si todos los candados exigidos están cerrados
+        todasConfirmadas() {
+            const totales = this.tareasTotales();
+            return totales > 0 && this.tareasCompletadas() === totales;
+        },
+
+        // Evalúa si se cumplen todas las condiciones para activar el botón verde
+        puedeGuardar() {
+            return this.todasConfirmadas() && this.hayCambiosGuardados;
+        },
+
+        // Cambia el texto del botón dinámicamente manteniendo un formato corto: "Validar (X/Y)"
+        textoBotonGuardar() {
+            if (!this.todasConfirmadas()) {
+                return `Validar (${this.tareasCompletadas()}/${this.tareasTotales()})`;
+            }
+            if (!this.hayCambiosGuardados) {
+                return 'Sin cambios';
+            }
+            return 'Guardar cambios';
+        },
+
+        
 
         abrirModalEdicion(fecha, nombreDia) {
             // PASO 2: Preparar la vista del Modal
@@ -451,7 +743,24 @@ document.addEventListener('alpine:init', () => {
             const marcasOrdenadas = this.modalMarcaciones.filter(m => m.estado !== 'Descartado');
             if (marcasOrdenadas.length > 0) {
                 
-                // 1. Lógica de Jornada (Entrada primero)
+                // --- NUEVA REGLA: Bloqueo de 2 marcas (Entrada y Almuerzo) en el modal ---
+                if (marcasOrdenadas.length === 2) {
+                    const tieneEntrada = marcasOrdenadas.find(m => m.tipo === 'Entrada');
+                    const tieneSalida = marcasOrdenadas.find(m => m.tipo === 'Salida');
+                    
+                    if (!tieneEntrada || !tieneSalida) {
+                        // Buscamos cuál es la marca extraña para mostrarla en el mensaje de error
+                        const marcaInvalida = marcasOrdenadas.find(m => m.tipo !== 'Entrada' && m.tipo !== 'Salida') || marcasOrdenadas[0];
+                        
+                        this.marcarErroresVisuales(
+                            marcasOrdenadas.map(m => m.id_registro), 
+                            `Incoherencia: Una jornada de 2 marcaciones debe ser estrictamente 'Entrada' y 'Salida'. Revisa el registro de '${marcaInvalida.tipo}'.`
+                        );
+                        return; // Bloquea el guardado
+                    }
+                }
+
+                //  Lógica de Jornada (Entrada primero)
                 const hayEntrada = marcasOrdenadas.find(m => m.tipo === 'Entrada');
                 if (hayEntrada && marcasOrdenadas[0].tipo !== 'Entrada') {
                     this.marcarErroresVisuales([marcasOrdenadas[0].id_registro, hayEntrada.id_registro], "Incoherencia: El registro de 'Entrada' debe ser el primero del día. Las filas en conflicto están resaltadas.");
@@ -516,8 +825,8 @@ document.addEventListener('alpine:init', () => {
         },
 
         aplicarCambiosServidor() {
-            // En lugar de un rechazo silencioso, avisamos al usuario si no hay nada que guardar
-            if (this.fechasModificadas.length === 0) {
+            
+            if (this.fechasModificadas.length === 0 && !this.hayCambiosGuardados) {
                 this.notificar("No se han detectado modificaciones nuevas para guardar.", "info");
                 return;
             }
@@ -529,13 +838,29 @@ document.addEventListener('alpine:init', () => {
             let payload = {
                 id_funcionario: this.datosUsuario ? this.datosUsuario.nombres : null,
                 mes_completo: document.querySelector('input[name="mes"]').value, // Ej: "2026-03"
-                fechas_modificadas: {}
+                fechas_modificadas: {},
+                penalizaciones_diarias: {}, // Contenedor para los atrasos (Parquet 3)
+
+                // --- Mandamos las horas oficiales editadas al servidor ---
+                entrada_oficial: this.datosUsuario ? this.datosUsuario.entrada_oficial : null,
+                salida_oficial: this.datosUsuario ? this.datosUsuario.salida_oficial : null,
+                receso_oficial: this.datosUsuario ? this.datosUsuario.receso_oficial : null,
+
+                // --- Mandamos la métrica del atraso total (Ej: "01:20") ---
+                atraso_total: this.calcularPenalizacionMensual() !== null ? this.formatearMinutos(this.calcularPenalizacionMensual()) : null
+
             };
 
-            // Empaquetar solo los días que el usuario tocó (con lápiz o con check)
+            // 1. Empaquetar solo los días que el usuario tocó manualmente (Para Parquet 1)
             this.fechasModificadas.forEach(fecha => {
                 payload.fechas_modificadas[fecha] = this.todosLosRegistros[fecha];
             });
+
+            // 2. NUEVO: Recalcular y empaquetar penalizaciones de TODOS los días (Para Parquet 3)
+            // Así garantizamos que si se cambió el "Horario Oficial", se actualice toda la columna
+            for (let fecha in this.todosLosRegistros) {
+                payload.penalizaciones_diarias[fecha] = this.obtenerPenalizacionesDia(fecha);
+            }
 
             console.log("Enviando JSON al servidor:", payload);
 

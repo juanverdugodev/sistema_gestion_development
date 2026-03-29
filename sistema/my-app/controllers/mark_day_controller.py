@@ -1,3 +1,5 @@
+""" [EXPERIMENTAL] CONTROLADOR EXPERIMENTAL PARA ESCALABILIDAD """
+
 from flask import render_template, session, request
 from db.database_connector import get_db_connection
 from datetime import datetime

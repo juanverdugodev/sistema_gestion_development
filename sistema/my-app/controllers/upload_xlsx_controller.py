@@ -1,3 +1,5 @@
+# upload_xlsx_controller.py
+
 import os
 import uuid
 import pandas as pd
@@ -8,7 +10,7 @@ from utils.register_engine import clusterizar
 
 def upload_xlsx_page_controller():
     """Renderiza la vista HTML para subir el Excel"""
-    return render_template('users/upload_xlsx_view.html')
+    return render_template('users/audit/upload_xlsx_view.html')
 
 def process_upload_xlsx_controller():
     """

@@ -7,6 +7,8 @@ logger = logging.getLogger(__name__)
 
 def login_controller():
     if session.get('logged_in'):
+        if session.get('rol') == 'Administrador':
+            return redirect(url_for('main.admin_user_records'))
         return redirect(url_for('main.home'))
     
     error = None
@@ -48,7 +50,10 @@ def login_controller():
                             return redirect(url_for('main.change_password'))
                         
                         session['logged_in'] = True
-                        return redirect(url_for('main.home'))
+                        if session['rol'] == 'Administrador':
+                            return redirect(url_for('main.admin_user_records'))
+                        else:
+                            return redirect(url_for('main.home'))
                     else:
                         error = 'Usuario o contraseña incorrectos.'
                 else:

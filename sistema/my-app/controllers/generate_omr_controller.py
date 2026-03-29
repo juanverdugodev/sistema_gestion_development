@@ -1,3 +1,5 @@
+""" [EXPERIMENTAL] CONTROLADOR EXPERIMENTAL PARA ESCALABILIDAD """
+
 from flask import render_template, session, current_app, flash
 from fpdf import FPDF
 from datetime import date

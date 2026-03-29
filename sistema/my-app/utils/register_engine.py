@@ -49,6 +49,22 @@ def etiquetar_clusters(numClusters, centroides):
 
     return df_cluster_ordenado
 
+def convertir_hora_decimal(hora_decimal):
+    """Convierte la hora en formato decimal de vuelta a formato de texto HH:MM:SS"""
+    horas = int(hora_decimal)
+    minutos_totales = (hora_decimal - horas) * 60
+    minutos = int(minutos_totales)
+    segundos = round((minutos_totales - minutos) * 60)
+
+    if segundos == 60:
+        minutos += 1
+        segundos = 0
+        if minutos == 60:
+            horas += 1
+            minutos = 0
+
+    return f"{horas:02d}:{minutos:02d}:{segundos:02d}"
+
 
 def clusterizar(df):
     """
@@ -205,8 +221,30 @@ def clusterizar(df):
         plt.close() # Cerrar la figura para liberar RAM del servidor
 
         df_resumen.loc[df_resumen['funcionario'] == str(nombre_filtrado), 'grafica'] = image_base64
-
         df_etiquetado = etiquetar_clusters(n_clusters, centroids)
+
+        # Extracción de centroides (tendencias) solo si existen para evitar errores y dejar los NaN correspondientes
+        
+        # Entrada
+        val_entrada = df_etiquetado.loc[df_etiquetado['marcacion'] == 'Entrada', 'centroide'].values
+        if len(val_entrada) > 0:
+            df_resumen.loc[df_resumen['funcionario'] == str(nombre_filtrado), 'tendEntrada'] = convertir_hora_decimal(val_entrada[0])
+            
+        # Salida Almuerzo
+        val_salida_almuerzo = df_etiquetado.loc[df_etiquetado['marcacion'] == 'Salida Almuerzo', 'centroide'].values
+        if len(val_salida_almuerzo) > 0:
+            df_resumen.loc[df_resumen['funcionario'] == str(nombre_filtrado), 'tendSalidaAl'] = convertir_hora_decimal(val_salida_almuerzo[0])
+            
+        # Regreso Almuerzo
+        val_regreso_almuerzo = df_etiquetado.loc[df_etiquetado['marcacion'] == 'Regreso Almuerzo', 'centroide'].values
+        if len(val_regreso_almuerzo) > 0:
+            df_resumen.loc[df_resumen['funcionario'] == str(nombre_filtrado), 'tendEntradaAl'] = convertir_hora_decimal(val_regreso_almuerzo[0])
+            
+        # Salida
+        val_salida = df_etiquetado.loc[df_etiquetado['marcacion'] == 'Salida', 'centroide'].values
+        if len(val_salida) > 0:
+            df_resumen.loc[df_resumen['funcionario'] == str(nombre_filtrado), 'tendSalida'] = convertir_hora_decimal(val_salida[0])
+
         df_f['cluster'] = df_f['cluster'].map(df_etiquetado['marcacion'])
 
         # Actualizar el DataFrame principal

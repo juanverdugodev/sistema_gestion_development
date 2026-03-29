@@ -4,34 +4,52 @@
         <i class="fas fa-clock mr-3 text-brand-blue"></i> Gestión horaria
     </div>
     
-    <nav class="flex-1 px-2 py-4 space-y-2 bg-slate-800 border border-slate-700 rounded-2xl shadow-sm">
+    <nav class="flex-1 px-2 py-4 space-y-2 bg-slate-800 border border-slate-700 rounded-2xl shadow-sm flex flex-col">
         
-        <a href="{{ url_for('main.home') }}"
-           draggable="false" 
-           class="flex items-center py-3 px-4 rounded-xl transition-all duration-200 text-sm
-                  {% if request.endpoint == 'main.home' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
-            <i class="fa-solid fa-house w-6 text-brand-blue"></i> Inicio
-        </a>
+        {# ETIQUETA DINÁMICA DE RUTAS EXPERIMENTALES Aparece para CUALQUIER rol que acceda a estas rutas específicas #}
+        {% if request.endpoint in ['main.home', 'main.mark_day', 'main.view_calendar', 'main.preview_omr', 'main.upload_omr_view'] %}
+        <div class="px-4 py-2 mb-2">
+            <span class="text-[12px] uppercase tracking-widest font-bold text-white bg-blue-400 border border-blue-800/50 px-2 py-1 rounded-md block text-center shadow-sm">
+                Sistema maquetado para ser escalado <strong>(seccion experimental)</strong>
+                <i class="fa-solid fa-flask text-purple-700 ml-1"></i>
+            </span>
+        </div>
+        {% endif %}
 
-        <a href="{{ url_for('main.mark_day') }}"
-           draggable="false"
-           class="flex items-center py-3 px-4 rounded-lg transition-all duration-200 text-sm
-                  {% if request.endpoint == 'main.mark_day' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
-            <i class="fa-solid fa-calendar-check w-6 text-brand-blue"></i>
-            {% if session.rol == 'Administrador' %}
-                Marcar jornada
-            {% else %}
-                Jornada
-            {% endif %}
-        </a>
+        {# 
+           1. SECCIONES DE USUARIO (MAQUETADO / ESCALABILIDAD)
+           Solo visibles si el rol es 'Usuario'
+            #}
+        {% if session.rol == 'Usuario' %}
 
-        <a href="{{ url_for('main.view_calendar') }}"
-            draggable="false"
-            class="flex items-center py-3 px-4 rounded-xl transition-all duration-200 text-sm
-                  {% if request.endpoint == 'main.view_calendar' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
-            <i class="fa-solid fa-calendar-days w-6 text-brand-blue"></i> Calendario
-        </a>
+            <a href="{{ url_for('main.home') }}"
+               draggable="false" 
+               class="flex items-center py-3 px-4 rounded-xl transition-all duration-200 text-sm
+                      {% if request.endpoint == 'main.home' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
+                <i class="fa-solid fa-house w-6 text-brand-blue"></i> Inicio
+            </a>
 
+            <a href="{{ url_for('main.mark_day') }}"
+               draggable="false"
+               class="flex items-center py-3 px-4 rounded-lg transition-all duration-200 text-sm
+                      {% if request.endpoint == 'main.mark_day' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
+                <i class="fa-solid fa-calendar-check w-6 text-brand-blue"></i> Jornada
+            </a>
+
+            <a href="{{ url_for('main.view_calendar') }}"
+               draggable="false"
+               class="flex items-center py-3 px-4 rounded-xl transition-all duration-200 text-sm
+                      {% if request.endpoint == 'main.view_calendar' %} bg-slate-700 text-white font-semibold shadow-inner {% else %} text-slate-300 hover:bg-slate-700 hover:text-white {% endif %}">
+                <i class="fa-solid fa-calendar-days w-6 text-brand-blue"></i> Calendario
+            </a>
+
+        {% endif %}
+
+
+        {# 
+           2. SECCIONES DE ADMINISTRADOR
+           Solo visibles si el rol es 'Administrador'
+            #}
         {% if session.rol == 'Administrador' %}
             
             <a href="{{ url_for('main.admin_user_records') }}"
@@ -57,6 +75,22 @@
             
         {% endif %}
 
-    </nav>
 
+        {# 
+           3. ACCESO ESPECIAL ADMIN DE SISTEMA
+           Visible solo para 'Administrador' del departamento 'Administrador de sistema'
+            #}
+        {% if session.rol == 'Administrador' and session.departamento == 'Administrador de sistema' %}
+        <div class="mt-auto pt-4 w-full">
+            <a href="{{ url_for('main.admin_gestion_usuarios') }}"
+               title="Panel de Administración del Sistema"
+               class="flex justify-between items-center py-3 px-4 rounded-xl transition-all duration-300 text-sm border 
+                      {% if request.endpoint == 'main.admin_gestion_usuarios' %} bg-brand-blue/20 border-brand-blue text-white shadow-inner {% else %} border-slate-600 hover:bg-brand-blue/10 hover:border-brand-blue/50 text-slate-300 hover:text-white {% endif %} group">
+                <span class="font-bold tracking-wide">Admin. Sistema</span>
+                <i class="fa-solid fa-user-shield text-brand-blue text-lg transition-transform group-hover:scale-110"></i>
+            </a>
+        </div>
+        {% endif %}
+
+    </nav>
 </aside>

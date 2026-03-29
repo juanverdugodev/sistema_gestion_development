@@ -27,11 +27,11 @@
                 <ul class="text-slate-700 space-y-4 font-medium">
                     <li class="flex items-start">
                         <i class="fas fa-calendar-alt text-brand-blue mt-1 mr-3"></i>
-                        <span>Selecciona el Mes y el Año del cual deseas obtener los registros.</span>
+                        <span>Selecciona el mes y el año del cual se necesita obtener los registros.</span>
                     </li>
                     <li class="flex items-start">
                         <i class="fas fa-database text-gray-500 mt-1 mr-3"></i>
-                        <span>El sistema buscará en la base de datos segura y transformará los registros al formato estructurado.</span>
+                        <span>El sistema buscará en la base de datos y transformará los registros al formato estructurado.</span>
                     </li>
                     <li class="flex items-start">
                         <i class="fas fa-file-excel text-green-600 mt-1 mr-3"></i>
@@ -89,15 +89,25 @@
                 </div>
             </div>
 
-            <div class="w-full max-w-md h-14 flex-shrink-0">
-                <template x-if="urlDescarga !== ''">
-                    <button type="button" @click="descargarExcel()" 
-                       class="w-full h-full bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3 font-bold text-lg cursor-pointer transform hover:-translate-y-1">
-                        <i class="fas fa-file-export"></i> Descargar Excel Generado
-                    </button>
+            <div class="w-full max-w-lg h-auto flex-shrink-0 flex flex-col gap-3 mt-4">
+                <template x-if="mesCompleto !== ''">
+                    <div class="flex flex-col sm:flex-row gap-3 w-full">
+                        
+                        <button type="button" @click="descargarExcel('single')" 
+                           class="flex-1 py-3 px-4 bg-green-500 hover:bg-green-600 text-white rounded-xl shadow-lg flex items-center justify-center gap-2 font-bold">
+                            <i class="fas fa-file-excel"></i> Excel completo (3 Hojas)
+                        </button>
+                        
+                        <button type="button" @click="descargarExcel('zip')" 
+                           class="flex-1 py-3 px-4 bg-brand-blue hover:bg-blue-600 text-white rounded-xl shadow-lg flex items-center justify-center gap-2 font-bold">
+                            <i class="fas fa-file-archive"></i> Archivos separados (.zip)
+                        </button>
+                        
+                    </div>
                 </template>
-                <template x-if="urlDescarga === ''">
-                    <button disabled class="w-full h-full bg-gray-300 text-gray-500 rounded-xl font-bold text-lg cursor-not-allowed flex items-center justify-center gap-3 border-2 border-gray-200">
+                
+                <template x-if="mesCompleto === ''">
+                    <button disabled class="w-full py-3.5 bg-gray-300 text-gray-500 rounded-xl font-bold text-lg cursor-not-allowed flex items-center justify-center gap-3 border-2 border-gray-200">
                         <i class="fas fa-lock"></i> Selecciona un periodo válido
                     </button>
                 </template>
@@ -143,29 +153,33 @@
             mesTemp: '',
             anioTemp: '',
             mesCompleto: '',
-            urlDescarga: '',
             
             actualizarMesAnio() {
                 if(this.mesTemp && this.anioTemp) {
                     this.mesCompleto = this.anioTemp + '-' + this.mesTemp;
-                    this.urlDescarga = `/api/records/download-xlsx?mes=${this.mesCompleto}`;
                 } else {
                     this.mesCompleto = '';
-                    this.urlDescarga = '';
                 }
             },
 
-            descargarExcel() {
-                if (!this.urlDescarga) return;
+            descargarExcel(modo) {
+                if (!this.mesCompleto) return;
+                
+                // Creamos la URL apuntando a la API y pasándole el modo ('single' o 'zip')
+                let urlFinal = `/api/records/download-xlsx?mes=${this.mesCompleto}&modo=${modo}`;
 
-                // Enciende el loading global
+                // Enciende el loading global con un mensaje distinto según el botón presionado
                 window.dispatchEvent(new CustomEvent('show-loading', { 
-                    detail: { message: 'Exportando datos a Excel...' } 
+                    detail: { message: modo === 'zip' ? 'Generando ZIP con archivos...' : 'Generando Excel...' } 
                 }));
 
-                fetch(this.urlDescarga)
-                    .then(response => {
-                        if (!response.ok) throw new Error("Error en el servidor al generar el archivo.");
+                fetch(urlFinal)
+                    .then(async response => {
+                        if (!response.ok) {
+                            // NUEVO: Intentamos leer el error exacto que envió Python
+                            const errorData = await response.json().catch(() => ({}));
+                            throw new Error(errorData.error || "Error en el servidor al generar el archivo.");
+                        }
                         return response.blob(); 
                     })
                     .then(blob => {
@@ -174,7 +188,6 @@
                         a.style.display = 'none';
                         a.href = url;
                         
-                        // Cambio clave 4: Método a prueba de fallos para obtener el nombre del mes sin consultar el DOM
                         const nombresMeses = {
                             "01": "ENERO", "02": "FEBRERO", "03": "MARZO", "04": "ABRIL",
                             "05": "MAYO", "06": "JUNIO", "07": "JULIO", "08": "AGOSTO",
@@ -182,7 +195,11 @@
                         };
                         let nombreMes = nombresMeses[this.mesTemp] || "MES";
                         
-                        a.download = `REGISTROS-ASISTENCIA-${nombreMes}-${this.anioTemp}.xlsx`;
+                        // Determinamos solo la extensión
+                        let extension = modo === 'zip' ? '.zip' : '.xlsx';
+                        
+                        // Asignamos el nombre limpio, idéntico al del backend en Python
+                        a.download = `ASISTENCIA-${nombreMes}-${this.anioTemp}${extension}`;
                         
                         document.body.appendChild(a);
                         a.click(); 
@@ -193,11 +210,12 @@
                     .catch(error => {
                         console.error("Error crítico en la descarga:", error);
                         window.dispatchEvent(new CustomEvent('notify', { 
-                            detail: { message: 'Ocurrió un error al exportar el archivo.', type: 'error' } 
+                            // NUEVO: Mostramos el mensaje exacto capturado
+                            detail: { message: error.message, type: 'error' } 
                         }));
                     })
                     .finally(() => {
-                        // Apaga el loading global sin importar si fue éxito o error
+                        // Apaga el loading global
                         window.dispatchEvent(new CustomEvent('hide-loading'));
                     });
             }

@@ -19,7 +19,7 @@ def get_db_connection(target_db=None):
             user=os.environ.get('DB_USER', 'app_user'),
             password=os.environ.get('DB_PASSWORD', 'App@p4ssw0rd26'),
             database=db_to_use,
-            port=int(os.environ.get('DB_PORT', 3307))
+            port=int(os.environ.get('DB_PORT', 3306))
         )
         if connection.is_connected():
             logger.info(f"Base MySQL conectada 🟢 ({db_to_use})")

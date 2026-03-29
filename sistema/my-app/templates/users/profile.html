@@ -3,15 +3,24 @@
 {% block content %}
 <div class="bg-white py-5 px-6 rounded-2xl shadow-lg border border-gray-300 flex flex-col gap-4 min-h-[calc(100vh-110px)] h-full overflow-hidden relative">
     
-    <div class="flex flex-shrink-0 items-start md:items-center border-b border-gray-100 pb-4 gap-4">
-        <a href="{{ url_for('main.home') }}" class="text-brand-blue hover:text-blue-700 transition-colors bg-blue-50 p-3 rounded-full hover:bg-blue-100 flex-shrink-0 mt-1 md:mt-0 shadow-sm">
-            <i class="fas fa-arrow-left text-xl"></i>
+    <div class="flex flex-col md:flex-row items-start md:items-center border-b border-gray-100 pb-6 gap-4">
+        <a href="{% if session.rol == 'Administrador' %}{{ url_for('main.admin_user_records') }}{% else %}{{ url_for('main.home') }}{% endif %}" 
+        class="group text-brand-blue hover:text-white transition-all duration-300 bg-blue-50 p-3 rounded-full hover:bg-brand-blue flex-shrink-0 shadow-sm hover:shadow-md"
+        title="Volver a {% if session.rol == 'Administrador' %}Registros{% else %}Inicio{% endif %}">
+            <i class="fas fa-arrow-left text-xl transition-transform group-hover:-translate-x-1"></i>
         </a>
-        <div class="flex flex-col md:flex-row justify-start items-start md:items-center gap-3 md:gap-6 w-full">
-            <h2 class="text-2xl font-bold text-slate-800">Mi Cuenta</h2>
-            <div class="hidden md:block w-1 h-8 bg-brand-blue rounded-full"></div>
-            <div class="md:hidden w-full h-1 bg-brand-blue rounded-full my-1"></div>
-            <p class="text-gray-700 text-lg font-semibold">Administra tu información personal y credenciales.</p>
+
+        <div class="flex flex-col md:flex-row justify-start items-start md:items-center gap-3 md:gap-5 w-full">
+            <h2 class="text-2xl font-extrabold text-slate-800 tracking-tight">
+                {% if session.rol == 'Administrador' %}Mi Perfil Admin{% else %}Mi Cuenta{% endif %}
+            </h2>
+            
+            <div class="hidden md:block w-[2px] h-8 bg-slate-200 rounded-full"></div>
+            <div class="md:hidden w-16 h-1 bg-brand-blue rounded-full mb-1"></div>
+            
+            <p class="text-slate-500 text-base md:text-lg font-medium leading-tight">
+                Gestiona tus datos personales y seguridad de acceso.
+            </p>
         </div>
     </div>
 

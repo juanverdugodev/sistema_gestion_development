@@ -18,55 +18,117 @@
     <div class="flex flex-col xl:flex-row justify-between items-start gap-4 w-full">
         <form method="GET" action="{{ url_for('main.admin_user_records') }}" 
               x-data="formBuscador('{{ mes_seleccionado }}', '{{ busqueda }}', '{{ url_for('main.get_names_by_month_api') }}')"
-              class="flex flex-col sm:flex-row gap-3 w-full xl:w-auto bg-gray-50 p-3 rounded-xl border border-gray-200 shadow-inner flex-shrink-0">
+              class="flex flex-wrap items-center gap-3 w-full bg-gray-50 p-3 rounded-xl border border-gray-200 shadow-inner">
             
-            <div class="flex gap-2 w-full sm:w-64">
-                <div class="relative w-1/2">
-                    <select x-model="mesTemp" @change="actualizarMesAnio()" required
-                            class="w-full pl-3 pr-8 py-2 border-2 border-gray-300 rounded-lg text-slate-700 font-semibold focus:outline-none focus:border-brand-blue transition-colors appearance-none cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed"
-                            {% if not meses_disponibles %} disabled {% endif %}>
-                        
+            <div class="flex gap-2 w-full sm:w-auto flex-shrink-0">
+                
+                <div class="relative w-1/2 sm:w-32" x-data="{ 
+                    comboAbierto: false,
+                    enfocarSeleccionado() {
+                        if (this.comboAbierto) {
+                            this.$nextTick(() => {
+                                const lista = this.$refs.listaOpcionesMes;
+                                const seleccionado = lista.querySelector('.es-seleccionado');
+                                if (seleccionado) {
+                                    lista.scrollTop = seleccionado.offsetTop - (lista.clientHeight / 2) + (seleccionado.clientHeight / 2);
+                                }
+                            });
+                        }
+                    }
+                }">
+                    <button type="button" 
+                            @click="if(!hayCambiosGuardados && {{ 'true' if meses_disponibles else 'false' }}) { comboAbierto = !comboAbierto; enfocarSeleccionado(); }"
+                            @click.away="comboAbierto = false"
+                            :disabled="hayCambiosGuardados || {{ 'true' if not meses_disponibles else 'false' }}"
+                            :title="hayCambiosGuardados ? 'Guarde los cambios antes de cambiar de mes' : ''"
+                            class="w-full text-left pl-3 pr-8 py-2 border-2 border-gray-300 rounded-lg text-slate-700 font-semibold focus:outline-none focus:border-brand-blue transition-colors cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed bg-white h-[44px] relative">
+                        <span class="block truncate" x-text="mesTemp ? nombresMeses[mesTemp] : 'Mes'"></span>
+                        <div class="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
+                            <i class="fas fa-chevron-down text-gray-400 text-xs transition-transform duration-200" :class="comboAbierto ? 'rotate-180' : ''"></i>
+                        </div>
+                    </button>
+                    
+                    <ul x-show="comboAbierto" 
+                        x-ref="listaOpcionesMes"
+                        x-transition.opacity.duration.200ms
+                        style="display: none; scroll-behavior: smooth;"
+                        class="absolute z-50 w-full mt-1 bg-white border-2 border-brand-blue/50 rounded-lg shadow-xl max-h-48 overflow-y-auto custom-scrollbar">
                         {% if not meses_disponibles %}
-                            <option value="" disabled selected>Sin registros</option>
-                        
+                            <li class="px-4 py-2.5 text-gray-400 italic font-semibold text-sm">Sin registros</li>
                         {% else %}
-                            <option value="" disabled selected>Mes</option>
                             {% for mes in meses_disponibles %}
-                                <option value="{{ mes.num }}">{{ mes.nombre }}</option>
+                                <li @click="mesTemp = '{{ mes.num }}'; comboAbierto = false; actualizarMesAnio();"
+                                    class="px-4 py-2.5 cursor-pointer font-semibold transition-all border-b border-gray-100 last:border-0 truncate text-sm"
+                                    :class="mesTemp === '{{ mes.num }}' ? 'bg-brand-blue text-white es-seleccionado shadow-inner' : 'hover:bg-blue-50 text-slate-700'">
+                                    {{ mes.nombre }}
+                                </li>
                             {% endfor %}
                         {% endif %}
-                        
-                    </select>
-                    <div class="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
-                        <i class="fas fa-chevron-down text-gray-400 text-xs"></i>
-                    </div>
+                    </ul>
                 </div>
 
-                <div class="relative w-1/2">
-                    <select x-model="anioTemp" @change="actualizarMesAnio()" required
-                            class="w-full pl-3 pr-8 py-2 border-2 border-gray-300 rounded-lg text-slate-700 font-semibold focus:outline-none focus:border-brand-blue transition-colors appearance-none cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed"
-                            {% if not anios_disponibles %} disabled {% endif %}>
-                        
+                <div class="relative w-1/2 sm:w-28" x-data="{ 
+                    comboAbierto: false,
+                    enfocarSeleccionado() {
+                        if (this.comboAbierto) {
+                            this.$nextTick(() => {
+                                const lista = this.$refs.listaOpcionesAnio;
+                                const seleccionado = lista.querySelector('.es-seleccionado');
+                                if (seleccionado) {
+                                    lista.scrollTop = seleccionado.offsetTop - (lista.clientHeight / 2) + (seleccionado.clientHeight / 2);
+                                }
+                            });
+                        }
+                    }
+                }">
+                    <button type="button" 
+                            @click="if(!hayCambiosGuardados && {{ 'true' if anios_disponibles else 'false' }}) { comboAbierto = !comboAbierto; enfocarSeleccionado(); }"
+                            @click.away="comboAbierto = false"
+                            :disabled="hayCambiosGuardados || {{ 'true' if not anios_disponibles else 'false' }}"
+                            :title="hayCambiosGuardados ? 'Guarde los cambios antes de cambiar de año' : ''"
+                            class="w-full text-left pl-3 pr-8 py-2 border-2 border-gray-300 rounded-lg text-slate-700 font-semibold focus:outline-none focus:border-brand-blue transition-colors cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed bg-white h-[44px] relative">
+                        <span class="block truncate" x-text="anioTemp ? anioTemp : 'Año'"></span>
+                        <div class="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
+                            <i class="fas fa-chevron-down text-gray-400 text-xs transition-transform duration-200" :class="comboAbierto ? 'rotate-180' : ''"></i>
+                        </div>
+                    </button>
+                    
+                    <ul x-show="comboAbierto" 
+                        x-ref="listaOpcionesAnio"
+                        x-transition.opacity.duration.200ms
+                        style="display: none; scroll-behavior: smooth;"
+                        class="absolute z-50 w-full mt-1 bg-white border-2 border-brand-blue/50 rounded-lg shadow-xl max-h-48 overflow-y-auto custom-scrollbar">
                         {% if not anios_disponibles %}
-                            <option value="" disabled selected>Sin registros</option>
-                        
+                            <li class="px-4 py-2.5 text-gray-400 italic font-semibold text-sm">Sin registros</li>
                         {% else %}
-                            <option value="" disabled selected>Año</option>
                             {% for anio in anios_disponibles %}
-                                <option value="{{ anio }}">{{ anio }}</option>
+                                <li @click="anioTemp = '{{ anio }}'; comboAbierto = false; actualizarMesAnio();"
+                                    class="px-4 py-2.5 cursor-pointer font-semibold transition-all border-b border-gray-100 last:border-0 truncate text-sm"
+                                    :class="anioTemp === '{{ anio }}' ? 'bg-brand-blue text-white es-seleccionado shadow-inner' : 'hover:bg-blue-50 text-slate-700'">
+                                    {{ anio }}
+                                </li>
                             {% endfor %}
                         {% endif %}
-                        
-                    </select>
-                    <div class="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
-                        <i class="fas fa-chevron-down text-gray-400 text-xs"></i>
-                    </div>
+                    </ul>
                 </div>
 
                 <input type="hidden" name="mes" :value="mesCompleto">
             </div>
 
-            <div class="relative w-full sm:w-72 flex-shrink-0" x-data="{ comboAbierto: false }">
+            <div class="relative flex-1 min-w-[200px] w-full" x-data="{ 
+                comboAbierto: false,
+                enfocarSeleccionado() {
+                    if (this.comboAbierto) {
+                        this.$nextTick(() => {
+                            const lista = this.$refs.listaOpciones;
+                            const seleccionado = lista.querySelector('.es-seleccionado');
+                            if (seleccionado) {
+                                lista.scrollTop = seleccionado.offsetTop - (lista.clientHeight / 2) + (seleccionado.clientHeight / 2);
+                            }
+                        });
+                    }
+                }
+            }">
                 
                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
                     <i class="fas fa-user-tag text-gray-400" :class="nombres.length > 0 ? 'text-brand-blue' : ''"></i>
@@ -75,12 +137,14 @@
                 <input type="hidden" name="busqueda" :value="nombreSeleccionado">
                 
                 <button type="button" 
-                        @click="if(nombres.length > 0 && !loadingNames) comboAbierto = !comboAbierto"
+                        @click="if(nombres.length > 0 && !loadingNames && !hayCambiosGuardados) { comboAbierto = !comboAbierto; enfocarSeleccionado(); }"
                         @click.away="comboAbierto = false"
-                        :disabled="nombres.length === 0 || loadingNames"
-                        class="w-full text-left pl-10 pr-10 py-2 border-2 border-gray-300 rounded-lg text-slate-700 font-semibold focus:outline-none focus:border-brand-blue transition-colors cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed bg-white h-[44px] truncate relative">
+                        :disabled="nombres.length === 0 || loadingNames || hayCambiosGuardados"
+                        :title="hayCambiosGuardados ? 'Guarde los cambios antes de consultar a otro funcionario' : ''"
+                        class="w-full text-left pl-10 pr-10 py-2 border-2 border-gray-300 rounded-lg text-slate-700 font-semibold focus:outline-none focus:border-brand-blue transition-colors cursor-pointer disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed bg-white h-[44px] relative overflow-hidden">
                     
-                    <span x-text="loadingNames ? 'Buscando registros...' : 
+                    <span class="block truncate w-full"
+                          x-text="loadingNames ? 'Buscando registros...' : 
                                  (nombres.length === 0 ? 'Selecciona mes y año' : 
                                  (nombreSeleccionado ? nombreSeleccionado : 'Selecciona un funcionario'))">
                     </span>
@@ -94,36 +158,57 @@
                 </div>
 
                 <ul x-show="comboAbierto" 
+                    x-ref="listaOpciones"
                     x-transition.opacity.duration.200ms
-                    style="display: none;"
+                    style="display: none; scroll-behavior: smooth;"
                     class="absolute z-50 w-full mt-1 bg-white border-2 border-brand-blue/50 rounded-lg shadow-xl max-h-48 overflow-y-auto custom-scrollbar">
                     
                     <template x-for="nombre in nombres" :key="nombre">
                         <li @click="nombreSeleccionado = nombre; comboAbierto = false"
-                            class="px-4 py-2.5 hover:bg-blue-50 text-slate-700 cursor-pointer font-semibold transition-colors border-b border-gray-100 last:border-0"
-                            :class="nombre === nombreSeleccionado ? 'bg-brand-blue/10 text-brand-blue' : ''"
-                            x-text="nombre">
-                        </li>
+                            class="px-4 py-2.5 cursor-pointer font-semibold transition-all border-b border-gray-100 last:border-0 truncate"
+                            :class="nombre === nombreSeleccionado ? 'bg-brand-blue text-white es-seleccionado shadow-inner' : 'hover:bg-blue-50 text-slate-700'"
+                            x-text="nombre" :title="nombre"> </li>
                     </template>
                     
                 </ul>
             </div>
 
-            <div class="relative w-full sm:w-auto flex gap-3">
+            <div class="flex gap-2 w-full sm:w-auto flex-shrink-0 justify-end">
+                <template x-if="datosUsuario && datosUsuario.grafica">
+                    <button type="button" 
+                            @click="modalGraficaAbierto = true"
+                            title="Ver análisis gráfico"
+                            class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 w-12 rounded-lg font-bold transition-colors shadow-sm flex items-center justify-center h-full min-h-[44px]">
+                        <i class="fa-solid fa-chart-gantt text-xl"></i>
+                    </button>
+                </template>
+                <template x-if="!datosUsuario || !datosUsuario.grafica">
+                    <button type="button" disabled
+                            title="Gráfica no disponible"
+                            class="bg-gray-100 text-gray-400 border border-gray-200 w-12 rounded-lg shadow-sm flex items-center justify-center h-full min-h-[44px] cursor-not-allowed opacity-60">
+                        <i class="fa-solid fa-chart-gantt text-xl"></i>
+                    </button>
+                </template>
+
                 <button type="submit" 
-                        :disabled="!mesCompleto"
-                        class="bg-brand-blue hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold transition-colors shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed h-full">
+                        :disabled="!mesCompleto || hayCambiosGuardados"
+                        :title="hayCambiosGuardados ? 'Guarda los cambios actuales antes de hacer una nueva consulta' : 'Buscar registros'"
+                        class="bg-brand-blue hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold transition-colors shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed h-full min-h-[44px]"
+                        :class="hayCambiosGuardados ? 'bg-gray-400 border-gray-300 hover:bg-gray-400' : ''">
                     <i class="fas fa-search"></i> Consultar
                 </button>
                 
                 <template x-if="Object.keys(todosLosRegistros).length > 0">
                     <button type="button" 
                             @click="aplicarCambiosServidor()" 
-                            :disabled="!todasConfirmadas()"
-                            class="text-white px-6 py-2 rounded-lg font-bold transition-all shadow-md flex items-center justify-center gap-2 border-2 h-full"
-                            :class="todasConfirmadas() ? 'bg-green-500 hover:bg-green-600 border-green-400' : 'bg-gray-400 border-gray-300 cursor-not-allowed opacity-70'">
+                            :disabled="!puedeGuardar()"
+                            :title="puedeGuardar() ? 'Guardar todos los cambios en el sistema' : (!todasConfirmadas() ? 'Debes confirmar todos los registros' : 'No hay modificaciones nuevas por guardar')"
+                            class="text-white px-6 py-2 rounded-lg font-bold transition-all shadow-md flex items-center justify-center gap-2 border-2 h-full min-h-[44px]"
+                            :class="puedeGuardar() ? 'bg-green-500 hover:bg-green-600 border-green-400' : 'bg-gray-400 border-gray-300 cursor-not-allowed opacity-70'">
+                        
                         <i class="fas fa-save text-lg"></i> 
-                        <span x-text="todasConfirmadas() ? 'Aplicar cambios' : 'Confirme días (' + diasListos() + '/' + Object.keys(todosLosRegistros).length + ')'"></span>
+                        
+                        <span class="hidden md:inline" x-text="textoBotonGuardar()"></span>
                     </button>
                 </template>
             </div>
@@ -133,13 +218,174 @@
     <div class="flex-1 flex flex-col min-h-0">
         {% if busqueda %}
             {% if usuario %}
-                <div class="bg-blue-50 border-l-4 border-brand-blue p-4 rounded-lg mb-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <h3 class="text-xl font-black text-slate-800 uppercase">{{ usuario.nombres }} {{ usuario.apellidos }}</h3>
-                        <div class="flex items-center gap-4 mt-1 text-sm font-bold text-gray-600">
-                            <span class="flex items-center"><i class="fas fa-id-card mr-2 text-brand-blue"></i> {{ usuario.cedula }}</span>
-                            <span class="flex items-center"><i class="fas fa-building mr-2 text-brand-blue"></i> {{ usuario.departamento }}</span>
+                <div class="bg-blue-50 border-l-4 border-brand-blue p-4 rounded-lg mb-6 shadow-sm flex flex-col xl:flex-row xl:items-center justify-start gap-4 sm:gap-6">
+                    
+                    <div class="flex-1 min-w-0">
+                        <h3 class="text-xl font-black text-slate-800 uppercase break-words leading-tight">{{ usuario.nombres }} {{ usuario.apellidos }}</h3>
+                        
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-sm font-bold text-gray-600">
+                            <span class="flex items-center whitespace-nowrap"><i class="fas fa-id-card mr-2 text-brand-blue"></i> {{ usuario.cedula }}</span>
+                            <span class="flex items-center break-words"><i class="fas fa-building mr-2 text-brand-blue mt-0.5"></i> {{ usuario.departamento }}</span>
                         </div>
+                    </div>
+                    
+                    <div class="hidden xl:block w-[2px] h-16 bg-brand-blue/30 rounded-full flex-shrink-0"></div>
+                    <div class="xl:hidden w-full h-[2px] bg-brand-blue/20 my-1 rounded-full"></div>
+                    
+                    <div class="flex flex-col sm:flex-row items-stretch gap-4 w-full xl:w-auto flex-shrink-0">
+                        
+                        <div class="flex flex-col bg-white p-3 rounded-xl shadow-sm border border-blue-100 w-full sm:w-max flex-shrink-0 transition-all duration-300"
+                             :class="datosUsuario.horarioConfirmado ? 'bg-emerald-50/30 border-emerald-200' : ''">
+                            
+                            <div class="flex justify-between items-center border-b pb-2 mb-2 transition-colors duration-300"
+                                 :class="datosUsuario.horarioConfirmado ? 'border-emerald-200' : 'border-blue-100'">
+                                
+                                <div class="text-xs font-black uppercase tracking-widest transition-colors duration-300"
+                                     :class="datosUsuario.horarioConfirmado ? 'text-emerald-600' : 'text-brand-blue'">
+                                    <i class="fas fa-clock mr-1"></i> Horario de Jornada
+                                </div>
+                                
+                                <div class="flex items-center gap-2 pl-4">
+
+                                    <div class="relative flex flex-col items-center justify-center cursor-help w-4" 
+                                         x-data="{ showTooltip: false }"
+                                         @mouseenter="showTooltip = true" 
+                                         @mouseleave="showTooltip = false"
+                                         @click="showTooltip = !showTooltip">
+                                         
+                                        <i class="fas text-sm transition-colors" 
+                                           :class="datosUsuario.horarioConfirmado ? 'fa-user-check text-emerald-500' : (datosUsuario.es_oficial ? 'fa-user-pen text-orange-400' : 'fa-solid fa-circle-info text-brand-blue')"></i>
+                                        
+                                        <div x-show="showTooltip" 
+                                             x-transition.opacity.duration.200ms
+                                             style="display: none;"
+                                             class="absolute top-full right-[-10px] mt-3 w-64 z-[100] cursor-default"
+                                             @click.stop>
+                                             
+                                             <div class="bg-slate-800 text-white text-xs rounded-xl shadow-2xl p-3.5 relative border border-slate-700">
+                                                 
+                                                 <div class="absolute -top-1.5 right-[11px] w-3.5 h-3.5 bg-slate-800 border-t border-l border-slate-700 transform rotate-45 rounded-sm"></div>
+                                                 
+                                                 <div class="relative z-10">
+                                                     <div class="flex items-center gap-2 font-black text-blue-300 mb-2 border-b border-slate-600 pb-1.5">
+                                                        <i class="fas fa-info-circle text-sm"></i>
+                                                        <span class="tracking-wider uppercase">Configuración</span>
+                                                     </div>
+                                                     
+                                                     <ul class="space-y-2 text-slate-200">
+                                                         <li class="leading-tight">
+                                                             <strong class="text-emerald-400 font-black">Entrada / Salida:</strong> 
+                                                             Define la hora exacta oficial de inicio y fin de la jornada.
+                                                         </li>
+                                                         <li class="leading-tight bg-slate-700/50 p-1.5 rounded-lg border border-slate-600">
+                                                             <strong class="text-orange-400 font-black flex items-center gap-1 mb-0.5">
+                                                                 <i class="fas fa-stopwatch"></i> Receso:
+                                                             </strong> 
+                                                             Establece el <span class="text-white font-bold bg-orange-500/30 px-1 rounded">tiempo total máximo</span> permitido para almorzar (Ej: 01:00 indica 1 hora).
+                                                         </li>
+                                                     </ul>
+                                                 </div>
+                                             </div>
+                                        </div>
+                                    </div>
+
+                                    <button type="button" 
+                                            @click="toggleConfirmarHorario()" 
+                                            :disabled="!datosUsuario.horarioConfirmado && !horarioCompleto()"
+                                            :title="(!datosUsuario.horarioConfirmado && !horarioCompleto()) ? 'Complete Entrada, Salida y Receso para poder confirmar' : (datosUsuario.horarioConfirmado ? 'Desbloquear para editar' : 'Confirmar y auditar horario')"
+                                            class="w-7 h-7 rounded-full shadow-sm transition-all border flex items-center justify-center flex-shrink-0 relative z-10 disabled:opacity-60 disabled:cursor-not-allowed"
+                                            :class="datosUsuario.horarioConfirmado ? 'bg-orange-50 text-orange-500 border-orange-200 hover:bg-orange-100' : (!horarioCompleto() ? 'bg-gray-100 text-gray-400 border-gray-300' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100')">
+                                        <i class="fas text-xs" :class="datosUsuario.horarioConfirmado ? 'fa-unlock-alt' : 'fa-check'"></i>
+                                    </button>
+
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 justify-center p-2 rounded-xl transition-all duration-300 relative group"
+                                :class="(!datosUsuario.horarioConfirmado && !datosUsuario.es_oficial && (datosUsuario.entrada_oficial || datosUsuario.salida_oficial || datosUsuario.receso_oficial)) ? 'border-2 border-dashed border-purple-300 bg-purple-50' : 'border-2 border-transparent'">
+                                
+                                <div x-show="!datosUsuario.horarioConfirmado && !datosUsuario.es_oficial && (datosUsuario.entrada_oficial || datosUsuario.salida_oficial || datosUsuario.receso_oficial)" 
+                                    style="display: none;"
+                                    class="absolute -top-9 left-1/2 transform -translate-x-1/2 bg-slate-800 text-purple-100 text-[0.65rem] font-bold py-1 px-3 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap z-[60] border border-slate-700">
+                                    <i class="fas fa-magic text-purple-400 mr-1"></i> Estimación por tendencias
+                                    <div class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-slate-800 border-b border-r border-slate-700 rotate-45"></div>
+                                </div>
+
+                                <div class="flex flex-col items-center">
+                                    <label class="text-[0.60rem] font-black uppercase tracking-widest mb-1 transition-colors"
+                                        :class="(!datosUsuario.horarioConfirmado && !datosUsuario.es_oficial) ? 'text-purple-400' : 'text-gray-500'">Entrada</label>
+                                    <input type="time" x-model="datosUsuario.entrada_oficial" 
+                                        @change="validarOrdenHoras('entrada')"
+                                        :disabled="datosUsuario.horarioConfirmado"
+                                        class="border-b-2 border-brand-blue bg-blue-50/50 hover:bg-blue-100 transition-colors p-1.5 rounded focus:outline-none font-black text-slate-700 w-[90px] text-center text-sm tracking-wider disabled:bg-transparent disabled:border-transparent disabled:text-emerald-700 disabled:opacity-100 disabled:cursor-not-allowed cursor-pointer"
+                                        :class="(!datosUsuario.horarioConfirmado && !datosUsuario.es_oficial) ? '!border-purple-400 !border-dashed !text-purple-600 !bg-purple-100/50 hover:!bg-purple-200' : ''">
+                                </div>
+                                
+                                <div class="font-black text-lg mb-1 transition-colors"
+                                    :class="(!datosUsuario.horarioConfirmado && !datosUsuario.es_oficial) ? 'text-purple-300' : 'text-gray-300'">-</div>
+                                
+                                <div class="flex flex-col items-center">
+                                    <label class="text-[0.60rem] font-black uppercase tracking-widest mb-1 transition-colors"
+                                        :class="(!datosUsuario.horarioConfirmado && !datosUsuario.es_oficial) ? 'text-purple-400' : 'text-gray-500'">Salida</label>
+                                    <input type="time" x-model="datosUsuario.salida_oficial" 
+                                        @change="validarOrdenHoras('salida')"
+                                        :disabled="datosUsuario.horarioConfirmado"
+                                        class="border-b-2 border-brand-blue bg-blue-50/50 hover:bg-blue-100 transition-colors p-1.5 rounded focus:outline-none font-black text-slate-700 w-[90px] text-center text-sm tracking-wider disabled:bg-transparent disabled:border-transparent disabled:text-emerald-700 disabled:opacity-100 disabled:cursor-not-allowed cursor-pointer"
+                                        :class="(!datosUsuario.horarioConfirmado && !datosUsuario.es_oficial) ? '!border-purple-400 !border-dashed !text-purple-600 !bg-purple-100/50 hover:!bg-purple-200' : ''">
+                                </div>
+                                
+                                <div class="w-[2px] h-6 mx-1.5 rounded-full mb-1 transition-colors"
+                                    :class="(!datosUsuario.horarioConfirmado && !datosUsuario.es_oficial) ? 'bg-purple-200' : 'bg-blue-100'"></div>
+                                
+                                <div class="flex flex-col items-center">
+                                    <label class="text-[0.60rem] font-black uppercase tracking-widest mb-1 transition-colors"
+                                        :class="(!datosUsuario.horarioConfirmado && !datosUsuario.es_oficial) ? 'text-purple-400' : 'text-gray-500'">Receso total</label>
+                                    <input type="time" x-model="datosUsuario.receso_oficial" 
+                                        @change="hayCambiosGuardados = true"
+                                        :disabled="datosUsuario.horarioConfirmado"
+                                        class="border-b-2 border-brand-blue bg-blue-50/50 hover:bg-blue-100 transition-colors p-1.5 rounded focus:outline-none font-black text-slate-700 w-[90px] text-center text-sm tracking-wider disabled:bg-transparent disabled:border-transparent disabled:text-emerald-700 disabled:opacity-100 disabled:cursor-not-allowed cursor-pointer"
+                                        :class="(!datosUsuario.horarioConfirmado && !datosUsuario.es_oficial) ? '!border-purple-400 !border-dashed !text-purple-600 !bg-purple-100/50 hover:!bg-purple-200' : ''">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex-1 sm:w-64 bg-white border rounded-xl flex flex-col justify-between min-h-[70px] shadow-sm relative overflow-hidden transition-all duration-300" :class="calcularPenalizacionMensual() > 0 ? 'border-red-200' : 'border-blue-200'">
+                            
+                            <div class="absolute top-0 left-0 w-1 h-full transition-colors duration-300"
+                                 :class="calcularPenalizacionMensual() > 0 ? 'bg-red-400' : 'bg-brand-blue'"></div>
+                            
+                            <div class="p-3 flex flex-col items-center justify-center flex-grow">
+                                <span class="flex items-center justify-center text-[0.65rem] font-black text-gray-500 uppercase tracking-widest mb-1">
+                                    <i class="fas fa-stopwatch text-base mr-1.5 transition-colors"
+                                       :class="calcularPenalizacionMensual() > 0 ? 'text-red-400' : 'text-brand-blue'"></i> 
+                                    Tiempo Descontado
+                                </span>
+                                
+                                <template x-if="calcularPenalizacionMensual() !== null">
+                                    <div class="flex items-baseline gap-1 transition-colors duration-300"
+                                         :class="calcularPenalizacionMensual() > 0 ? 'text-red-600' : 'text-brand-blue'">
+                                        <span class="text-2xl font-black leading-none" x-text="formatearMinutos(calcularPenalizacionMensual())"></span>
+                                        <span class="text-xs font-bold tracking-widest">HH:mm</span>
+                                    </div>
+                                </template>
+                                
+                                <template x-if="calcularPenalizacionMensual() === null">
+                                    <span class="text-gray-500 font-bold text-xs mt-1 bg-gray-200 px-2 py-0.5 rounded">Aún no definido</span>
+                                </template>
+                            </div>
+
+                            <div class="bg-gray-50/80 border-t border-gray-100 py-1.5 px-3 flex justify-start items-baseline gap-2 w-full mt-auto">
+                                
+                                <span class="text-[0.60rem] font-black text-gray-500 uppercase tracking-widest flex items-baseline gap-1.5">
+                                    <i class="fas fa-calendar-check text-brand-blue self-center"></i> Días asistidos:
+                                </span>
+                                
+                                <span class="text-sm font-black text-slate-700 leading-none" x-text="diasAsistidos()"></span> 
+                                
+                            </div>
+
+                        </div>
+                        
                     </div>
                 </div>
 
@@ -207,7 +453,7 @@
                                                     <div x-ref="container" @scroll.debounce="checkScroll()"  class="flex flex-nowrap gap-3 items-center justify-start w-full pb-3 pt-1 px-7 overflow-x-auto custom-scrollbar transition-all duration-300" :class="fechasConfirmadas.includes('{{ reg.fecha }}') ? 'opacity-60 grayscale-[30%]' : ''">
                                                         
                                                         <template x-for="(mark, i) in obtenerMarcasActivas('{{ reg.fecha }}')" :key="i">
-                                                            <div class="flex-shrink-0 flex flex-col items-center justify-center px-4 py-2 rounded-xl border-2 shadow-sm w-[115px] h-[85px] transition-colors"
+                                                            <div class="flex-shrink-0 flex flex-col items-center justify-center px-4 py-2 rounded-xl border-2 shadow-sm w-[115px] h-[85px] transition-colors relative"
                                                                  :class="{
                                                                      'bg-orange-50 border-orange-300': ['Pendiente', 'Inconsistente'].includes(mark.estado),
                                                                      'bg-green-50 border-green-400': mark.estado === 'Actualizado',
@@ -235,6 +481,17 @@
                                                                       }">
                                                                     <span x-text="mark.tipo"></span>
                                                                     <span class="block opacity-90 text-[0.55rem]" x-text="'(' + mark.metodo + ')'"></span>
+                                                                    <template x-if="calcularPenalizacionMarca(mark, '{{ reg.fecha }}') !== null">
+                                                                        <div class="absolute -bottom-3 left-1/2 transform -translate-x-1/2 bg-white border shadow-sm rounded-md px-2 py-0.5 whitespace-nowrap z-10 flex items-center justify-center transition-colors"
+                                                                            :class="calcularPenalizacionMarca(mark, '{{ reg.fecha }}') > 0 ? 'border-red-300' : 'border-brand-blue/40'">
+                                                                            
+                                                                            <span class="text-[0.65rem] font-black uppercase tracking-wider"
+                                                                                :class="calcularPenalizacionMarca(mark, '{{ reg.fecha }}') > 0 ? 'text-red-600' : 'text-brand-blue'"
+                                                                                x-text="textoPenalizacion(mark, '{{ reg.fecha }}')">
+                                                                            </span>
+                                                                            
+                                                                        </div>
+                                                                    </template>
                                                                 </span>
                                                             </div>
                                                         </template>
@@ -287,6 +544,22 @@
                                                                   }" x-text="estado">
                                                             </span>
                                                         </template>
+                                                        
+                                                        <template x-if="['Válido', 'Actualizado'].some(e => obtenerEstadosDia('{{ reg.fecha }}').includes(e))">
+                                                            <template x-if="calcularPenalizacionDia('{{ reg.fecha }}') !== null">
+                                                                <div class="mt-2 flex items-center justify-between border rounded shadow-sm px-2 py-1.5 w-full transition-colors"
+                                                                    :class="calcularPenalizacionDia('{{ reg.fecha }}') > 0 ? 'border-red-200 bg-red-50/50' : 'border-blue-200 bg-blue-50/50'">
+                                                                    
+                                                                    <span class="text-[0.65rem] font-black uppercase tracking-wider"
+                                                                        :class="calcularPenalizacionDia('{{ reg.fecha }}') > 0 ? 'text-red-500' : 'text-brand-blue'">Descuento:</span>
+                                                                    
+                                                                    <span class="text-sm font-black"
+                                                                        :class="calcularPenalizacionDia('{{ reg.fecha }}') > 0 ? 'text-red-700' : 'text-brand-blue'" 
+                                                                        x-text="formatearMinutos(calcularPenalizacionDia('{{ reg.fecha }}'))"></span>
+                                                                </div>
+                                                            </template>
+                                                        </template>
+
                                                         <template x-if="obtenerEstadosDia('{{ reg.fecha }}').length === 0">
                                                             <span class="text-gray-400 text-xs font-bold italic w-full text-center">Sin estado</span>
                                                         </template>
@@ -323,7 +596,7 @@
                 </div>
 
                 <h3 class="text-xl font-bold text-slate-700 mb-2">Consulta el historial</h3>
-                <p class="text-gray-500 font-semibold">Selecciona el mes y luego escoge al empleado para visualizar sus marcaciones en el archivo.</p>
+                <p class="text-gray-500 font-semibold">Selecciona el mes y luego escoge al funcionario para visualizar sus marcaciones en el archivo.</p>
             </div>
         {% endif %}
     </div>
@@ -379,9 +652,9 @@
                                 <th class="p-3 font-black border-b-2 border-brand-blue bg-brand-blue text-white shadow-sm">
                                     <i class="fas fa-edit mr-1"></i> Tipo de Marcación
                                 </th>
-                                <th class="p-3 font-black border-b-2 border-brand-blue/70 bg-brand-blue/70 text-white shadow-sm"">Método</th>
-                                <th class="p-3 font-black border-b-2 border-brand-blue/70 bg-brand-blue/70 text-white shadow-sm"">Estado</th>
-                                <th class="p-3 font-black border-b-2 border-brand-blue/70 bg-brand-blue/70 text-white shadow-sm"">Acción</th>
+                                <th class="p-3 font-black border-b-2 border-brand-blue/70 bg-brand-blue/70 text-white shadow-sm">Método</th>
+                                <th class="p-3 font-black border-b-2 border-brand-blue/70 bg-brand-blue/70 text-white shadow-sm">Estado</th>
+                                <th class="p-3 font-black border-b-2 border-brand-blue/70 bg-brand-blue/70 text-white shadow-sm">Acción</th>
                                 
                             </tr>
                         </thead>
@@ -389,12 +662,13 @@
                             <template x-for="(marca, index) in modalMarcaciones" :key="index">
                                 <tr class="transition-all duration-500" :class="{'opacity-60 bg-red-50': marca.estado === 'Descartado' && !registrosConError.includes(marca.id_registro),'bg-red-200 animate-pulse border-y-2 border-red-500 shadow-[inset_0_0_10px_rgba(239,68,68,0.5)]': registrosConError.includes(marca.id_registro),'hover:bg-gray-50': marca.estado !== 'Descartado' && !registrosConError.includes(marca.id_registro)}">
                                     <td class="p-3 text-center">
-                                        <input type="time" 
+                                        <input type="text" 
                                                x-model="marca.hora" 
-                                               @change="marca.estado = 'Actualizado'" 
+                                               @input="formatearHora24($event, marca, 'hora'); marca.estado = 'Actualizado'" 
                                                :disabled="marca.estado === 'Descartado'"
                                                :readonly="marca.metodo !== 'MANUAL'"
-                                               class="border-2 border-brand-blue rounded-md p-1.5 text-center font-black text-brand-blue w-28 bg-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:border-gray-300 disabled:text-gray-500"
+                                               maxlength="5" placeholder="00:00"
+                                               class="border-2 border-brand-blue rounded-md p-1.5 text-center font-black text-brand-blue w-24 bg-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:border-gray-300 disabled:text-gray-500"
                                                :class="{
                                                    'hover:bg-blue-50/50 focus:outline-none focus:ring-2 focus:ring-brand-blue/50 cursor-pointer': marca.metodo === 'MANUAL' && marca.estado !== 'Descartado',
                                                    'cursor-not-allowed opacity-90 pointer-events-none': marca.metodo !== 'MANUAL' && marca.estado !== 'Descartado'
@@ -480,6 +754,39 @@
             </div>
         </div>
     </template>
+
+    <template x-teleport="body">
+        <div x-show="modalGraficaAbierto" style="display: none;" 
+             @keydown.escape.window="modalGraficaAbierto = false"
+             class="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 sm:p-6 md:p-8">
+             
+            <div @click.away="modalGraficaAbierto = false" 
+                 class="bg-slate-800 rounded-2xl shadow-2xl flex flex-col w-full max-w-6xl p-4 sm:p-6 transform transition-all relative">
+                
+                <div class="flex justify-between items-center mb-4 flex-shrink-0">
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-chart-gantt text-brand-blue text-2xl"></i>
+                        <h3 class="text-xl font-black text-white">Análisis de marcaciones</h3>
+                    </div>
+                    
+                    <button @click="modalGraficaAbierto = false" title="Cerrar (Esc)"
+                            class="text-brand-blue hover:text-red-500 bg-slate-600 hover:bg-red-50 w-10 h-10 rounded-full flex items-center justify-center transition-colors">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="flex justify-center items-center w-full bg-slate-800 rounded-xl p-2">
+                    <template x-if="datosUsuario && datosUsuario.grafica">
+                        <img :src="'data:image/png;base64,' + datosUsuario.grafica" 
+                             alt="Gráfica de clústeres" 
+                             class="w-auto max-w-full max-h-[75vh] object-contain rounded-lg shadow-sm border border-gray-200 bg-white">
+                    </template>
+                </div>
+
+            </div>
+        </div>
+    </template>
+
     <template x-teleport="body">
         <div x-show="isSaving" style="display: none;" 
              class="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm transition-opacity">

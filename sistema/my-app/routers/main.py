@@ -12,9 +12,18 @@ from controllers.export_xlsx_controller import export_xlsx_page_controller, down
 from utils.file_manager import get_omr_storage
 from utils.decorator import role_required
 
+# IMPORTS PARA EL PANEL DE ADMINISTRACIÓN
+from controllers.admin_controller import (
+    admin_usuarios_controller, 
+    nuevo_departamento_controller, 
+    nuevo_usuario_controller, 
+    editar_usuario_controller, 
+    reset_password_admin_controller
+)
 
 main = Blueprint('main', __name__)
 
+ # Endpoint para el cambio de clave en primer inicio de sesion
 @main.before_app_request
 def check_password_status():
     if session.get('needs_password_change'):
@@ -23,22 +32,15 @@ def check_password_status():
         
 @main.route('/')
 def index():
+    if session.get('rol') == 'Administrador':
+        return redirect(url_for('main.admin_user_records'))
     return redirect(url_for('main.home'))
 
+ # ENDPOINTS EXPERIMENTALES / ESCALABLES  < -------------------------
 @main.route('/home')
 @role_required(['Administrador', 'Usuario']) 
 def home():
     return home_controller()
-
-@main.route('/profile', methods=['GET'])
-@role_required(['Administrador', 'Usuario'])
-def profile():
-    return view_profile_controller()
-
-@main.route('/profile/update', methods=['POST'])
-@role_required(['Administrador', 'Usuario']) 
-def update_profile():
-    return update_profile_controller()
 
 @main.route('/home/mark-day')
 @role_required(['Administrador', 'Usuario']) 
@@ -84,8 +86,19 @@ def cancel_upload_omr():
 def confirm_upload_omr():
     return confirm_upload_controller()
 
+# ----------------------------------------------------------------------
 
-# Endpoints para consulta de marcaciones
+# ENDPOINTS PRINCIPALES:  < ----------------------------
+
+@main.route('/profile', methods=['GET'])
+@role_required(['Administrador', 'Usuario'])
+def profile():
+    return view_profile_controller()
+
+@main.route('/profile/update', methods=['POST'])
+@role_required(['Administrador', 'Usuario']) 
+def update_profile():
+    return update_profile_controller()
 
 @main.route('/home/mark-day/user-records', methods=['GET'])
 @role_required(['Administrador']) 
@@ -104,7 +117,6 @@ def get_names_by_month_api():
 def guardar_edicion_jornada():
     # API invocada por el botón "Aplicar cambios" para sobrescribir el Parquet
     return guardar_edicion_jornada_api()
-
 
 
 # Endpoints para carga de archivos .xlsx
@@ -138,6 +150,33 @@ def export_xlsx_view():
 @role_required(['Administrador']) 
 def download_xlsx_api():
     return download_xlsx_controller()
+
+# ENDPOINTS: PANEL DE ADMINISTRACIÓN SISTEMA (Usuarios y Departamentos)
+
+@main.route('/home/admin/manage-user', methods=['GET'])
+@role_required(['Administrador']) 
+def admin_gestion_usuarios():
+    return admin_usuarios_controller()
+
+@main.route('/api/admin/department/new', methods=['POST'])
+@role_required(['Administrador'])
+def nuevo_departamento():
+    return nuevo_departamento_controller()
+
+@main.route('/api/admin/user/new', methods=['POST'])
+@role_required(['Administrador'])
+def nuevo_usuario():
+    return nuevo_usuario_controller()
+
+@main.route('/api/admin/user/edit', methods=['POST'])
+@role_required(['Administrador'])
+def editar_usuario():
+    return editar_usuario_controller()
+
+@main.route('/api/admin/user/reset-password', methods=['POST'])
+@role_required(['Administrador'])
+def reset_password_admin():
+    return reset_password_admin_controller()
 
 # Enpoint para el cambio de password
 @main.route('/change_password', methods=['GET', 'POST'])
