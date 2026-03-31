@@ -1,0 +1,260 @@
+{% extends "base/base.html" %}
+
+{% block content %}
+<div x-data='visorLogs()' class="bg-slate-900 py-5 px-6 rounded-2xl shadow-2xl border border-slate-700 flex flex-col gap-4 h-[calc(100vh-120px)] w-full relative">
+    
+    <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 w-full border-b border-slate-800 pb-4 shrink-0">
+        
+        <div class="flex items-center gap-4">
+            <a href="{{ url_for('main.admin_gestion_usuarios') }}" title="Volver al Panel" 
+               class="w-10 h-10 bg-slate-800 hover:bg-slate-700 text-brand-blue rounded-xl flex items-center justify-center transition-colors shadow-sm border border-slate-600 flex-shrink-0">
+                <i class="fas fa-arrow-left text-lg"></i>
+            </a>
+            <div>
+                <h2 class="text-xl font-black text-slate-100 flex items-center gap-2">
+                    <i class="fas fa-terminal text-emerald-400"></i> Consola de logs
+                </h2>
+                <p class="text-slate-400 font-semibold text-xs mt-0.5">Auditoría del sistema y trazabilidad</p>
+            </div>
+        </div>
+        
+        <div class="flex flex-wrap items-center gap-3 bg-slate-800 p-2 rounded-xl border border-slate-700 w-full xl:w-auto">
+            
+            <div class="flex items-center gap-2">
+                
+                <div class="relative flex flex-col items-center justify-center cursor-help ml-1" 
+                     x-data="{ showTooltip: false }"
+                     @mouseenter="showTooltip = true" 
+                     @mouseleave="showTooltip = false"
+                     @click="showTooltip = !showTooltip">
+                     
+                    <i class="fas fa-info-circle text-lg text-brand-blue hover:text-brand-blue/80 transition-colors"></i>
+                    
+                    <div x-show="showTooltip" 
+                         style="display: none;"
+                         class="absolute top-full left-1/2 transform -translate-x-1/2 mt-3 w-56 z-[100] cursor-default"
+                         @click.stop>
+                         
+                         <div class="bg-slate-700 text-white text-xs rounded-xl shadow-2xl p-3.5 relative border border-slate-600">
+                             
+                             <div class="absolute -top-1.5 left-1/2 transform -translate-x-1/2 w-3.5 h-3.5 bg-slate-700 border-t border-l border-slate-600 rotate-45 rounded-sm"></div>
+                             
+                             <div class="relative z-10">
+                                 <div class="flex items-center gap-2 font-black text-cyan-400 mb-2 border-b border-slate-600 pb-1.5">
+                                    <i class="fas fa-terminal text-sm text-emerald-400"></i>
+                                    <span class="tracking-wider uppercase">Simulación de consola</span>
+                                 </div>
+                                 <p class="text-slate-200 leading-tight font-medium">
+                                    Solo para lectura de los archivos logs más recientes.
+                                 </p>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+                
+                <div class="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
+                    <button @click="cambiarTipo('auditoria')" 
+                            class="py-1 px-3 rounded text-xs font-bold transition-all flex items-center gap-1.5"
+                            :class="tipoLog === 'auditoria' ? 'bg-brand-blue text-white shadow' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'">
+                        <i class="fas fa-user-shield"></i> Auditoría
+                    </button>
+                    <button @click="cambiarTipo('sistema')" 
+                            class="py-1 px-3 rounded text-xs font-bold transition-all flex items-center gap-1.5"
+                            :class="tipoLog === 'sistema' ? 'bg-brand-blue text-white shadow' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'">
+                        <i class="fas fa-server"></i> Sistema
+                    </button>
+                </div>
+            </div>
+
+            <div class="w-px h-5 bg-slate-600 hidden sm:block"></div>
+
+            <div class="flex items-center gap-2">
+                <label class="text-xs font-bold text-slate-400 hidden sm:block">Líneas:</label>
+                <div class="relative">
+                    <select x-model="lineasAMostrar" @change="fetchLogs()" 
+                            class="bg-slate-900 border border-slate-700 text-slate-200 text-xs font-bold rounded-lg py-1.5 pl-3 pr-8 focus:outline-none focus:border-brand-blue appearance-none cursor-pointer">
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="75">75</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                    </select>
+                    <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-slate-400">
+                        <i class="fas fa-chevron-down text-[10px]"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-px h-5 bg-slate-600 hidden sm:block"></div>
+
+            <button @click="fetchLogs()" 
+                    class="bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5" 
+                    :disabled="cargando">
+                <i class="fas fa-sync-alt" :class="cargando ? 'fa-spin' : ''"></i> 
+                <span class="hidden sm:inline">Actualizar</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="flex-1 w-full bg-[#0c0c0c] rounded-xl shadow-inner border-2 border-slate-800 flex flex-col overflow-hidden relative font-mono">
+        
+        <div class="bg-slate-800 border-b border-slate-700 px-4 py-1.5 flex items-center justify-between flex-shrink-0 z-10">
+            <div class="text-slate-300 text-xs font-bold tracking-wider flex items-center gap-2">
+                <span class="text-emerald-400">admin@sistema</span><span class="text-white">:</span><span class="text-brand-blue">~</span><span class="text-white">$</span> tail -n <span x-text="lineasAMostrar"></span> <span x-text="'storage_datos/storage-files/logs/' + tipoLog + '.log'"></span>
+            </div>
+            <div class="flex items-center gap-2 text-[10px] font-sans font-bold uppercase tracking-widest">
+                <span class="text-emerald-500 flex items-center gap-1.5" x-show="!cargando">
+                    <span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span></span>
+                    Conectado
+                </span>
+                <span class="text-yellow-500 flex items-center gap-1.5" x-show="cargando">
+                    <i class="fas fa-circle-notch fa-spin"></i> Solicitando
+                </span>
+            </div>
+        </div>
+
+        <div x-ref="terminalScroll" class="flex-1 overflow-y-auto p-4 custom-scrollbar text-[13px] overscroll-contain text-slate-300 leading-relaxed">
+            
+            <template x-if="logsList.length === 0 && !cargando">
+                <div class="py-2 text-slate-400 font-mono">
+                    > [ ARCHIVO VACÍO ] No existen registros en storage_datos/storage-files/logs/<span x-text="tipoLog"></span>.log
+                </div>
+            </template>
+
+            <ul class="break-words">
+                <template x-for="(linea, index) in logsMostrados.slice().reverse()" :key="index">
+                    <li class="py-0.5 hover:bg-slate-700/30 transition-colors flex">
+                        <span class="text-slate-500 select-none pr-4 text-xs shrink-0" x-text="(logsList.length - logsMostrados.length + index + 1).toString().padStart(3, '0')"></span>
+                        <span x-html="formatearLinea(linea)" class="break-all"></span>
+                    </li>
+                </template>
+            </ul>
+            
+            <template x-if="logsList.length > 0">
+                <div class="mt-4 flex items-center gap-2 text-slate-500 text-xs">
+                    <span class="font-bold bg-slate-800 px-2 py-0.5 rounded text-white">[ EOF ]</span>
+                    <span class="text-white opacity-50">_</span>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+    {% include 'components/loading_overlay.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('visorLogs', () => ({
+            tipoLog: 'auditoria',
+            lineasAMostrar: '50',
+            logsList: [],
+            cargando: false,
+            
+            init() {
+                this.fetchLogs();
+            },
+            
+            get logsMostrados() {
+                return this.logsList.slice(0, parseInt(this.lineasAMostrar));
+            },
+
+            cambiarTipo(nuevoTipo) {
+                if (this.tipoLog === nuevoTipo) return;
+                this.tipoLog = nuevoTipo;
+                this.fetchLogs();
+            },
+            
+            fetchLogs() {
+                this.cargando = true;
+                
+                window.dispatchEvent(new CustomEvent('show-loading'));
+                
+                fetch(`/api/admin/logs/${this.tipoLog}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.error) {
+                            this.logsList = [`- ERROR - Error interno: ${data.error}`];
+                        } else {
+                            this.logsList = data.logs || [];
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        this.logsList = [`- CRITICAL - Conexión rechazada o perdida con el servidor.`];
+                    })
+                    .finally(() => {
+                        this.cargando = false;
+                        window.dispatchEvent(new CustomEvent('hide-loading'));
+                        
+                        // MAGIA: Scrollea automáticamente hacia abajo al terminar de cargar los datos
+                        this.$nextTick(() => {
+                            if(this.$refs.terminalScroll) {
+                                this.$refs.terminalScroll.scrollTop = this.$refs.terminalScroll.scrollHeight;
+                            }
+                        });
+                    });
+            },
+
+            formatearLinea(lineaRaw) {
+                const partes = lineaRaw.split(' - ');
+                if (partes.length >= 4) {
+                    const fecha = partes[0];
+                    const nivel = partes[1];
+                    const loggerName = partes[2];
+                    
+                    // Manejo del bloque "[archivo:funcion]" del log de sistema si existe
+                    let mensaje = '';
+                    let infoArchivo = '';
+                    
+                    // Si el log es de sistema, tiene 5 partes: Fecha - Nivel - Nombre - [Archivo] - Mensaje
+                    if (partes.length >= 5 && partes[3].startsWith('[')) {
+                        infoArchivo = partes[3];
+                        mensaje = partes.slice(4).join(' - ');
+                    } else {
+                        mensaje = partes.slice(3).join(' - ');
+                    }
+
+                    // Colores exactos basados en la imagen
+                    let colorNivel = 'text-emerald-400 font-bold'; // Verde para INFO por defecto
+                    if (nivel === 'ERROR' || nivel === 'CRITICAL') colorNivel = 'text-red-500 font-bold';
+                    if (nivel === 'WARNING') colorNivel = 'text-yellow-500 font-bold';
+                    
+                    let htmlSalida = `<span class="text-cyan-400">[${fecha}]</span> 
+                                      <span class="${colorNivel}">[${nivel}]</span> 
+                                      <span class="text-fuchsia-400">[${loggerName}]</span>: `;
+                                      
+                    if (infoArchivo) {
+                        htmlSalida += `<span class="text-slate-400">${infoArchivo}</span> `;
+                    }
+                    
+                    htmlSalida += `<span class="text-slate-300 ml-1">${mensaje}</span>`;
+                    
+                    return htmlSalida;
+                }
+                return `<span class="text-red-400">${lineaRaw}</span>`;
+            }
+        }));
+    });
+</script>
+
+<style>
+    /* Scrollbar estilo terminal Linux */
+    .bg-\[\#0c0c0c\] .custom-scrollbar::-webkit-scrollbar {
+        width: 8px;
+    }
+    .bg-\[\#0c0c0c\] .custom-scrollbar::-webkit-scrollbar-track {
+        background: #0f172a; 
+    }
+    .bg-\[\#0c0c0c\] .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #334155; 
+        border-radius: 4px;
+    }
+    .bg-\[\#0c0c0c\] .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #475569; 
+    }
+</style>
+{% endblock %}

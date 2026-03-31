@@ -20,5 +20,5 @@ COPY . .
 # Exponemos el puerto 80
 EXPOSE 5000
 
-# Ejecutamos el run.py que está dentro de sistema/my-app/
-CMD ["flask", "--app", "sistema/my-app/run.py", "run", "--host=0.0.0.0", "--port=5000", "--debug"]
+# Ejecutamos el run.py que está dentro de sistema/app/
+CMD ["flask", "--app", "sistema/app/run.py", "run", "--host=0.0.0.0", "--port=5000", "--debug"]

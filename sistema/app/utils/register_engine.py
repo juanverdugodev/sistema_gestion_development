@@ -12,10 +12,11 @@ import base64
 # FUNDAMENTAL PARA FLASK: Evita que Matplotlib intente abrir ventanas gráficas y crashee el servidor
 matplotlib.use('Agg')
 
-logger = logging.getLogger(__name__)
+# --- REEMPLAZO: Instanciamos el canal de logs de sistema ---
+sys_logger = logging.getLogger('sistema')
 
 def asignar_marcacion(hora):
-    """Celda 14 del cuaderno"""
+    """Celda 14 """
     limEntrada = 12
     if hora < limEntrada:  
         return 'Entrada'
@@ -23,7 +24,7 @@ def asignar_marcacion(hora):
         return 'Salida'
 
 def etiquetar_clusters(numClusters, centroides):
-    """Celda 14 del cuaderno"""
+    """Celda 14 """
     df_cluster = pd.DataFrame(centroides, columns=['centroide'])
     df_cluster_ordenado = df_cluster.sort_values(by='centroide')
 
@@ -72,6 +73,8 @@ def clusterizar(df):
     Recibe el DataFrame crudo leído del Excel y devuelve el DataFrame procesado.
     """
     
+    sys_logger.info("Iniciando motor de Machine Learning (K-Means) para el procesamiento de marcaciones...")
+
     # --- INICIO DE ESTRUCTURACIÓN DE CABECERAS PARA LOS 3 PARQUETS ---
 
     # 1. ESTRUCTURACIÓN DEL PARQUET PRINCIPAL (df)
@@ -102,6 +105,8 @@ def clusterizar(df):
     df['hora'] = df['fecha_hora'].dt.time
 
     unique_names = df['nombre'].dropna().unique().tolist()
+    
+    sys_logger.info(f"Se detectaron {len(unique_names)} funcionarios unicos para analisis.")
 
     # 2. CREACIÓN DESDE CERO DEL PARQUET DE RESUMEN MENSUAL (df_resumen)
     # Celda 8: Estructura resumen
@@ -138,32 +143,33 @@ def clusterizar(df):
             })
     df_diario = pd.concat([df_diario, pd.DataFrame(filas_diario)], ignore_index=True)
 
-    # --- INICIO DE INYECCIÓN DE CABECERAS FINALES AL PARQUET PRINCIPAL ---
 
-    # Añadimos la columna vacía al DF principal
+    # añadir la columna vacía al DF principal
     # forzamos el tipo 'object' para que acepte texto sin que PyArrow falle
     df['marcacionCluster'] = np.nan
     df['marcacionCluster'] = df['marcacionCluster'].astype('object')
 
-    # --- NUEVA COLUMNA: MARCACIÓN REAL ---
     # Guarda la corrección manual del administrador (Nace nula)
     df['marcacionReal'] = np.nan
     df['marcacionReal'] = df['marcacionReal'].astype('object')
 
-    # --- NUEVA COLUMNA DE ESTADO PARA EL FRONTEND ---
     # Inicializa todos los registros como nulos (NaN) para que en el futuro 
     # se sobreescriban con 'Válido' o 'Actualizado'.
     df['tipoValidacion'] = np.nan
     df['tipoValidacion'] = df['tipoValidacion'].astype('object')
 
     # --- FIN DE INYECCIÓN DE CABECERAS FINALES ---
+    entradas = np.arange(7, 9.5, 0.5)
+    salidas = np.arange(16,20,0.5)
 
+    
     # Celda 16: El bucle principal de KMeans y Gráficas
     for nombre_filtrado in unique_names:
         columnas_a_seleccionar = ['fecha', 'hora']
         df_f = df[df['nombre'] == nombre_filtrado][columnas_a_seleccionar].copy()
         
         if df_f.empty:
+            sys_logger.warning(f"Algoritmo omitio a '{nombre_filtrado}': No existen datos procesables.")
             continue
             
         df_f['fecha'] = pd.to_datetime(df_f['fecha'])
@@ -186,6 +192,7 @@ def clusterizar(df):
         # Protección en caso de que los datos sean menores a los clusters
         n_clusters = min(n_clusters, len(df_f))
         if n_clusters == 0:
+            sys_logger.warning(f"Algoritmo omitio a '{nombre_filtrado}': 0 clusters detectados para agrupar.")
             continue
 
         kmeans = KMeans(n_clusters=n_clusters, random_state=0)
@@ -228,7 +235,10 @@ def clusterizar(df):
         # Entrada
         val_entrada = df_etiquetado.loc[df_etiquetado['marcacion'] == 'Entrada', 'centroide'].values
         if len(val_entrada) > 0:
-            df_resumen.loc[df_resumen['funcionario'] == str(nombre_filtrado), 'tendEntrada'] = convertir_hora_decimal(val_entrada[0])
+            df_resumen.loc[df_resumen['funcionario'] == str(nombre_filtrado), 'tendEntrada'] = convertir_hora_decimal(val_entrada[0])            
+            entrada_cercana = entradas[np.abs(entradas - val_entrada[0]).argmin()]
+        else:
+            entrada_cercana = 8
             
         # Salida Almuerzo
         val_salida_almuerzo = df_etiquetado.loc[df_etiquetado['marcacion'] == 'Salida Almuerzo', 'centroide'].values
@@ -244,11 +254,19 @@ def clusterizar(df):
         val_salida = df_etiquetado.loc[df_etiquetado['marcacion'] == 'Salida', 'centroide'].values
         if len(val_salida) > 0:
             df_resumen.loc[df_resumen['funcionario'] == str(nombre_filtrado), 'tendSalida'] = convertir_hora_decimal(val_salida[0])
+            salida_cercana = salidas[np.abs(salidas - val_salida[0]).argmin()]
+        else:
+            salida_cercana = entrada_cercana + 9 # ( laborables + 1 de almuerzo)
+
+        df_resumen.loc[df_resumen['funcionario'] == nombre_filtrado, 'entradaOficial'] = convertir_hora_decimal(entrada_cercana)
+        df_resumen.loc[df_resumen['funcionario'] == nombre_filtrado, 'salidaOficial'] = convertir_hora_decimal(salida_cercana)
 
         df_f['cluster'] = df_f['cluster'].map(df_etiquetado['marcacion'])
 
         # Actualizar el DataFrame principal
         df.loc[df_f.index, 'marcacionCluster'] = df_f['cluster']
+
+    sys_logger.info("Motor de Machine Learning finalizado exitosamente. Todas las graficas y DataFrames fueron generados.")
 
     # Para no perder el trabajo de resumen y diario, aunque el parquet principal es df, 
     # retornamos todo. El controlador decidirá qué guardar.

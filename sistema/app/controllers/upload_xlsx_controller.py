@@ -3,10 +3,15 @@
 import os
 import uuid
 import pandas as pd
+import logging # <-- Agregado
 
 from flask import render_template, request, jsonify, session
 from utils.file_manager import get_temp_uploads_storage, get_uploads_storage_parquet
 from utils.register_engine import clusterizar
+
+# --- REEMPLAZO: Instanciamos los dos canales de logs ---
+audit_logger = logging.getLogger('auditoria')
+sys_logger = logging.getLogger('sistema')
 
 def upload_xlsx_page_controller():
     """Renderiza la vista HTML para subir el Excel"""
@@ -21,6 +26,7 @@ def process_upload_xlsx_controller():
         return jsonify({"error": "No se encontró ningún archivo en la petición"}), 400
 
     file = request.files['file']
+    admin_actual = session.get('username', 'Usuario Desconocido') # Capturamos usuario para auditoría
 
     if file.filename == '':
         return jsonify({"error": "No se seleccionó ningún archivo"}), 400
@@ -29,6 +35,8 @@ def process_upload_xlsx_controller():
         try:
             rol_actual = session.get('rol_id')
             if rol_actual != 1:
+                # LOG DE AUDITORÍA: Intento de subida de datos por alguien sin permisos
+                audit_logger.warning(f"Intento de carga de registros denegado para el usuario '{admin_actual}'. Se requiere rol administrativo.")
                 return jsonify({"error": "Acceso denegado. Solo el perfil administrativo puede cargar registros."}), 403
 
             temp_folder = get_temp_uploads_storage()
@@ -46,6 +54,9 @@ def process_upload_xlsx_controller():
             total_personal = df['Nombre'].astype(str).nunique() if 'Nombre' in df.columns else 0
             total_dept = df['Dpto.'].nunique() if 'Dpto.' in df.columns else 0
 
+            # LOG DE SISTEMA: Trazabilidad de archivos temporales en el disco duro
+            sys_logger.info(f"Archivo temporal '{temp_filename}' cargado exitosamente para validación inicial.")
+
             return jsonify({
                 "mensaje": "Archivo leído y validado correctamente.",
                 "archivo_temp": temp_filename,
@@ -60,6 +71,8 @@ def process_upload_xlsx_controller():
         except Exception as e:
             if 'temp_filepath' in locals() and os.path.exists(temp_filepath):
                 os.remove(temp_filepath)
+            # LOG DE SISTEMA: Falla técnica leyendo el Excel temporal
+            sys_logger.error(f"Error interno al procesar (Paso 1) el Excel: {str(e)}")
             return jsonify({"error": f"Error interno al procesar el Excel: {str(e)}"}), 500
     else:
         return jsonify({"error": "Formato inválido. Solo se admiten archivos .xlsx."}), 400
@@ -68,11 +81,16 @@ def cancel_upload_xlsx_controller():
     """Descarta el archivo temporal si el usuario cancela la operación."""
     datos = request.get_json()
     filename = datos.get('filename')
+    admin_actual = session.get('username', 'Usuario Desconocido')
+
     if filename:
         temp_folder = get_temp_uploads_storage()
         filepath = os.path.join(temp_folder, filename)
         if "temp_xlsx_" in filename and os.path.exists(filepath):
             os.remove(filepath)
+            # LOG DE AUDITORÍA: El usuario canceló la subida antes de importar
+            audit_logger.info(f"El usuario '{admin_actual}' descarto el archivo de validacion antes de realizar la importacion.")
+            
     return jsonify({"mensaje": "Archivo descartado correctamente."}), 200
 
 def confirm_upload_xlsx_controller():
@@ -81,6 +99,8 @@ def confirm_upload_xlsx_controller():
     lo convierte a .parquet y elimina el temporal.
     """
     datos_req = request.get_json()
+    admin_actual = session.get('username', 'Usuario Desconocido')
+
     if not datos_req or 'archivo_temp' not in datos_req:
         return jsonify({"error": "Datos inválidos o falta el archivo temporal, error interno."}), 400
 
@@ -89,6 +109,7 @@ def confirm_upload_xlsx_controller():
     temp_filepath = os.path.join(temp_folder, archivo_temp)
 
     if not os.path.exists(temp_filepath):
+        sys_logger.warning(f"Intento de confirmación fallido. El archivo temporal '{archivo_temp}' ya no existe.")
         return jsonify({"error": "El archivo temporal ya no existe o caducó. Vuelva a subirlo."}), 400
 
     try:
@@ -132,12 +153,17 @@ def confirm_upload_xlsx_controller():
 
         # 6. Respuesta
         if total_personal > 0:
+            # LOG DE AUDITORÍA CRÍTICO: Registra la inyección oficial de datos a la base del sistema
+            audit_logger.info(f"El usuario '{admin_actual}' proceso e importo exitosamente {len(df)} registros para el periodo {mes}-{year}.")
             return jsonify({
                 "mensaje": f"Se procesaron {len(df)} registros correspondientes a {total_marcaciones} tipos de marcaciones.",
                 "tipo": "success"
             }), 200
         else:
+            sys_logger.error(f"Fallo lógico en el motor matemático: Los datos de {mes}-{year} terminaron vacíos tras clústerización.")
             return jsonify({"error": "Error: Los datos no fueron cargados correctamente tras el análisis."}), 500
 
     except Exception as e:
+        # LOG DE SISTEMA: Fallo crítico durante K-Means, guardado de Parquets, etc.
+        sys_logger.error(f"Error crítico en la confirmación o procesamiento matemático (Paso 2): {str(e)}")
         return jsonify({"error": f"Error crítico en la confirmación o procesamiento matemático: {str(e)}"}), 500

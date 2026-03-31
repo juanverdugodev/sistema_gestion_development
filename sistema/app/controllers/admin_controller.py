@@ -3,7 +3,9 @@ from db.database_connector import get_db_connection
 from werkzeug.security import generate_password_hash
 import logging
 
-logger = logging.getLogger(__name__)
+# Instanciamos los dos canales de logs que configuramos en app.py
+audit_logger = logging.getLogger('auditoria')
+sys_logger = logging.getLogger('sistema')
 
 def check_admin_access():
     """Verifica que el usuario logueado sea del departamento Administrador de sistema."""
@@ -16,7 +18,7 @@ def check_admin_access():
 class AdminController:
     @staticmethod
     def get_dashboard_data():
-        db = get_db_connection() # Quitamos el argumento para que use el default como querías
+        db = get_db_connection()
         datos = {'usuarios': [], 'departamentos': [], 'roles': []}
         if db:
             try:
@@ -37,7 +39,8 @@ class AdminController:
                 """)
                 datos['usuarios'] = cursor.fetchall()
             except Exception as e:
-                logger.error(f"Error al obtener datos admin: {e}")
+                # Fallo técnico de BD -> Logger de Sistema
+                sys_logger.error(f"Error al obtener datos admin en get_dashboard_data: {e}")
             finally:
                 cursor.close()
                 db.close()
@@ -45,6 +48,7 @@ class AdminController:
 
     @staticmethod
     def agregar_departamento(nombre):
+        admin_actual = session.get('username', 'Usuario Desconocido') # Corregido
         db = get_db_connection()
         if db:
             try:
@@ -52,9 +56,14 @@ class AdminController:
                 cursor.execute("INSERT INTO departamentos (departamento) VALUES (%s)", (nombre,))
                 db.commit()
                 flash('Departamento agregado exitosamente.', 'success')
+                
+                # Acción humana exitosa -> Logger de Auditoría
+                audit_logger.info(f"El usuario '{admin_actual}' creó el nuevo departamento: '{nombre}'.")
+                
             except Exception as e:
                 db.rollback()
-                logger.error(f"Error al agregar departamento: {e}")
+                # Error de ejecución -> Logger de Sistema
+                sys_logger.error(f"Fallo de BD al intentar agregar departamento '{nombre}': {e}")
                 flash('Error al agregar departamento. Puede que ya exista.', 'error')
             finally:
                 cursor.close()
@@ -62,6 +71,7 @@ class AdminController:
 
     @staticmethod
     def agregar_usuario(nombres, apellidos, cedula, id_departamento, id_rol):
+        admin_actual = session.get('username', 'Usuario Desconocido')
         db = get_db_connection()
         if db:
             try:
@@ -74,9 +84,14 @@ class AdminController:
                 cursor.execute(sql, (nombres, apellidos, cedula, pwd_hash, id_departamento, id_rol))
                 db.commit()
                 flash('Usuario creado con éxito. Contraseña temporal: Default1', 'success')
+                
+                # Acción humana exitosa -> Logger de Auditoría
+                audit_logger.info(f"El usuario '{admin_actual}' registró al nuevo funcionario '{nombres} {apellidos}' (C.I: {cedula}).")
+                
             except Exception as e:
                 db.rollback()
-                logger.error(f"Error al agregar usuario: {e}")
+                # Error de ejecución -> Logger de Sistema
+                sys_logger.error(f"Fallo de BD al intentar crear al usuario '{nombres} {apellidos}' (C.I: {cedula}): {e}")
                 flash('Error al crear el usuario. Verifique si la cédula ya existe.', 'error')
             finally:
                 cursor.close()
@@ -84,6 +99,7 @@ class AdminController:
 
     @staticmethod
     def editar_usuario(id_usuario, nombres, apellidos, cedula, id_departamento, id_rol):
+        admin_actual = session.get('username', 'Usuario Desconocido') # Corregido
         db = get_db_connection()
         if db:
             try:
@@ -98,9 +114,14 @@ class AdminController:
                 cursor.execute(sql, (nombres, apellidos, cedula, id_departamento, id_rol, id_usuario))
                 db.commit()
                 flash('Usuario actualizado correctamente.', 'success')
+                
+                # Acción humana exitosa -> Logger de Auditoría
+                audit_logger.info(f"El usuario '{admin_actual}' editó la información del funcionario '{nombres} {apellidos}' (ID: {id_usuario}, C.I: {cedula}).")
+
             except Exception as e:
                 db.rollback()
-                logger.error(f"Error al actualizar usuario: {e}")
+                # Error de ejecución -> Logger de Sistema
+                sys_logger.error(f"Fallo de BD al intentar actualizar al usuario ID {id_usuario}: {e}")
                 flash('Error al actualizar el usuario.', 'error')
             finally:
                 cursor.close()
@@ -108,18 +129,30 @@ class AdminController:
 
     @staticmethod
     def resetear_password(id_usuario):
+        admin_actual = session.get('username', 'Usuario Desconocido') # Corregido
         db = get_db_connection()
         if db:
             try:
                 cursor = db.cursor()
+                
+                # Obtenemos el nombre del afectado para que el log sea legible
+                cursor.execute("SELECT nombres, apellidos FROM usuarios WHERE id_usuario=%s", (id_usuario,))
+                user_data = cursor.fetchone()
+                nombre_afectado = f"{user_data[0]} {user_data[1]}" if user_data else f"ID {id_usuario}"
+                
                 pwd_hash = generate_password_hash('Default1', method='pbkdf2:sha256')
                 sql = "UPDATE usuarios SET password_hash=%s, change_password=1 WHERE id_usuario=%s"
                 cursor.execute(sql, (pwd_hash, id_usuario))
                 db.commit()
                 flash('Contraseña restablecida a "Default1". El usuario deberá cambiarla al ingresar.', 'success')
+                
+                # Acción humana crítica (Seguridad) -> Logger de Auditoría sin Emojis
+                audit_logger.warning(f"ACCION CRITICA: El usuario '{admin_actual}' reseteo la contraseña del funcionario '{nombre_afectado}' (ID: {id_usuario}) al valor por defecto.")
+
             except Exception as e:
                 db.rollback()
-                logger.error(f"Error al resetear password: {e}")
+                # Error de ejecución -> Logger de Sistema
+                sys_logger.error(f"Fallo de BD al intentar resetear la contraseña del usuario ID {id_usuario}: {e}")
                 flash('Error al restablecer la contraseña.', 'error')
             finally:
                 cursor.close()
@@ -129,11 +162,12 @@ class AdminController:
 
 def admin_usuarios_controller():
     if not check_admin_access():
+        # Intento de acceso no autorizado -> Logger de Auditoría/Seguridad
+        audit_logger.warning(f"Intento de acceso denegado al Panel de Administracion por el usuario '{session.get('username', 'Usuario Desconocido')}'.")
         flash('Acceso denegado. Exclusivo para el Administrador de sistema.', 'error')
         return redirect(url_for('main.home'))
     
     datos = AdminController.get_dashboard_data()
-    # Asegúrate de que la ruta del template coincida con tus carpetas reales
     return render_template('admin/admin_panel.html', datos=datos)
 
 def nuevo_departamento_controller():

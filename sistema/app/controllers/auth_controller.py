@@ -3,7 +3,9 @@ from werkzeug.security import check_password_hash
 from db.database_connector import get_db_connection
 import logging
 
-logger = logging.getLogger(__name__)
+# --- REEMPLAZO: Instanciamos los dos canales de logs ---
+audit_logger = logging.getLogger('auditoria')
+sys_logger = logging.getLogger('sistema')
 
 def login_controller():
     if session.get('logged_in'):
@@ -35,7 +37,9 @@ def login_controller():
 
                 if user:
                     if not user['activo']:
-                        logger.info(f" Intento de inicio de sesión: usuario id {user['id_usuario']}")
+                        # LOG DE AUDITORÍA: Intento de acceso de cuenta inactiva (Alerta de seguridad)
+                        nombre_inactivo = f"{user['nombres']} {user['apellidos']}"
+                        audit_logger.warning(f"Intento de inicio de sesion bloqueado: El usuario '{nombre_inactivo}' (ID {user['id_usuario']}) intento acceder pero su cuenta esta desactivada.")
                         error = 'Su cuenta está desactivada. Contacte al administrador.'
                     elif check_password_hash(user['password_hash'], password):
                         session.clear()
@@ -59,13 +63,15 @@ def login_controller():
                 else:
                     error = 'Usuario o contraseña incorrectos.'
             except Exception as e:
-                logger.exception(f"Error en login: {e}")
+                # LOG DE SISTEMA: Falla en el código o en la consulta SQL
+                sys_logger.exception(f"Error en login: {e}")
                 error = "Error interno del servidor."
             finally:
                 cursor.close()
                 db.close()
         else:
-            logger.error(f"Error (Def login()) base de datos.")
+            # LOG DE SISTEMA: Falla de conexión a la base de datos
+            sys_logger.error(f"Error (Def login()) base de datos.")
             error = "No hay conexión con la base de datos."
             
     return render_template('auth/login.html', error=error)

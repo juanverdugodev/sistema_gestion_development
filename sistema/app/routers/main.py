@@ -9,6 +9,7 @@ from controllers.calendar_controller import calendar_controller
 from controllers.user_mark_day_records_controller import obtener_nombres_parquet, validar_marcaciones, guardar_edicion_jornada_api
 from controllers.upload_xlsx_controller import upload_xlsx_page_controller, process_upload_xlsx_controller, cancel_upload_xlsx_controller, confirm_upload_xlsx_controller
 from controllers.export_xlsx_controller import export_xlsx_page_controller, download_xlsx_controller
+from controllers.logs_controller import logs_page_controller, get_logs_api_controller
 from utils.file_manager import get_omr_storage
 from utils.decorator import role_required
 
@@ -153,7 +154,7 @@ def download_xlsx_api():
 
 # ENDPOINTS: PANEL DE ADMINISTRACIÓN SISTEMA (Usuarios y Departamentos)
 
-@main.route('/home/admin/manage-user', methods=['GET'])
+@main.route('/admin/manage-user', methods=['GET'])
 @role_required(['Administrador']) 
 def admin_gestion_usuarios():
     return admin_usuarios_controller()
@@ -177,6 +178,21 @@ def editar_usuario():
 @role_required(['Administrador'])
 def reset_password_admin():
     return reset_password_admin_controller()
+
+# --- ENDPOINTS: VISOR DE LOGS Y AUDITORÍA ---
+@main.route('/admin/logs', methods=['GET'])
+@role_required(['Administrador'])
+def admin_logs_view():
+    """Página principal del visor de logs"""
+    return logs_page_controller()
+
+@main.route('/api/admin/logs/<tipo>', methods=['GET'])
+@role_required(['Administrador'])
+def api_get_logs(tipo):
+    """API que devuelve el JSON de auditoría o sistema"""
+    return get_logs_api_controller(tipo)
+
+# ----------------------------------------------------
 
 # Enpoint para el cambio de password
 @main.route('/change_password', methods=['GET', 'POST'])

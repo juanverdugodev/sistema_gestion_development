@@ -8,7 +8,9 @@ import uuid
 import re
 import numpy as np
 
-logger = logging.getLogger(__name__)
+# --- REEMPLAZO: Instanciamos los dos canales de logs ---
+audit_logger = logging.getLogger('auditoria')
+sys_logger = logging.getLogger('sistema')
 
 
 # ESCANEO DE ARCHIVOS (MESES Y AÑOS DINÁMICOS) PARA EL CAMPO SELECT HTML
@@ -66,7 +68,7 @@ def obtener_nombres_parquet():
         return jsonify({"exists": True, "names": sorted(nombres_unicos)}), 200
         
     except Exception as e:
-        logger.error(f"Error al obtener nombres: {e}")
+        sys_logger.error(f"Error al obtener nombres: {e}")
         return jsonify({"exists": False, "names": [], "error": str(e)}), 500
 
 
@@ -87,6 +89,7 @@ def validar_marcaciones():
 
     empleado_req = request.args.get('busqueda', '').strip() 
     mes_req = request.args.get('mes', '')               
+    admin_actual = session.get('username', 'Usuario Desconocido')
 
     # --- PASO 2: Variables de Respuesta (Vacías por defecto) ---
     datos_usuario = None
@@ -121,6 +124,9 @@ def validar_marcaciones():
                     flash(f"No hay registros de {empleado_req} en este mes.", "warning")
 
                 else:
+                    # LOG DE AUDITORÍA: El usuario consultó un registro específico
+                    audit_logger.info(f"El usuario '{admin_actual}' consulto el registro de asistencia de '{empleado_req}' correspondiente al mes {mes_req}.")
+
                     # Ordenar fechas cronológicamente
                     df_emp['fecha_hora'] = pd.to_datetime(df_emp['fecha_hora'])
                     df_emp = df_emp.sort_values(by=['fecha', 'hora'])
@@ -210,7 +216,7 @@ def validar_marcaciones():
                                         # Aquí ya nace formateado sin segundos, así que lo dejamos tal cual
                                         receso_oficial_str = f"{h_diff:02d}:{m_diff:02d}"
                                     except Exception as e:
-                                        logger.error(f"Error calculando tiempo de receso: {e}")
+                                        sys_logger.error(f"Error calculando tiempo de receso: {e}")
 
 
                             # --- Extraer la gráfica generada por Matplotlib ---
@@ -370,7 +376,7 @@ def validar_marcaciones():
                     semanas_finales = [semanas_agrupadas[num] for num in sorted(semanas_agrupadas.keys())]
 
         except Exception as e:
-            logger.error(f"Error procesando el parquet: {e}")
+            sys_logger.error(f"Error procesando el parquet: {e}")
             flash("Ocurrió un error interno al leer los datos.", "error")
 
     # --- PASO 8: Renderizar Pantalla ---
@@ -396,8 +402,10 @@ def guardar_edicion_jornada_api():
     mes_completo = datos.get('mes_completo')
     # Usamos {} por defecto en caso de que no venga nada
     fechas_modificadas = datos.get('fechas_modificadas', {})
+    
+    admin_actual = session.get('username', 'Usuario Desconocido')
 
-    # NUEVO: Capturar las penalizaciones por día
+    # Capturar las penalizaciones por día
     penalizaciones_diarias = datos.get('penalizaciones_diarias', {})
 
     # Las fechas_modificadas pueden estar vacías si solo se editó el Horario (Entrada/Salida/Receso)
@@ -531,7 +539,7 @@ def guardar_edicion_jornada_api():
         # --- ACTUALIZAR EL PARQUET DIARIO (Parquet 3) ---
         penalizaciones_diarias = datos.get('penalizaciones_diarias', {})
         
-        if penalizaciones_diarias:
+        if penalizaciones_diarias or fechas_modificadas:
             archivo_diario = f"diario-{mes}-{anio}.parquet"
             ruta_diario = os.path.join(get_uploads_storage_parquet(), nombre_carpeta, archivo_diario)
             
@@ -544,6 +552,15 @@ def guardar_edicion_jornada_api():
                     if col not in df_diario.columns:
                         df_diario[col] = None # Las creamos si por algún motivo no existían
                     df_diario[col] = df_diario[col].astype('object')
+
+                # --- Inyectar numMarcacionesFinal ---
+                
+                for fecha_str, marcas_js in fechas_modificadas.items():
+                    mask_diario = (df_diario['funcionario'] == nombre_funcionario) & (df_diario['fecha'].astype(str).str.startswith(fecha_str))
+                    
+                    if mask_diario.any():
+                        # Guardamos el tamaño del arreglo que nos envía JS
+                        df_diario.loc[mask_diario, 'numMarcacionesFinal'] = len(marcas_js)
 
                 # Iteramos día por día para guardar sus penalizaciones
                 for fecha_str, penalizaciones in penalizaciones_diarias.items():
@@ -559,9 +576,11 @@ def guardar_edicion_jornada_api():
                 # Guardamos el tercer parquet sobrescribiéndolo de forma segura
                 df_diario.to_parquet(ruta_diario, engine='pyarrow', compression='snappy')
 
+        # LOG DE AUDITORÍA: El Administrador guardó cambios exitosamente
+        audit_logger.info(f"El usuario '{admin_actual}' modifico y audito las marcaciones de '{nombre_funcionario}' correspondientes al mes {mes_completo}.")
 
         return jsonify({"success": True}), 200
 
     except Exception as e:
-        logger.error(f"Error al sobrescribir parquet in-place: {e}")
+        sys_logger.error(f"Error al sobrescribir parquet in-place: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
